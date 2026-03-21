@@ -54,7 +54,7 @@
 | 資料庫 / 認證 | Supabase（PostgreSQL + Auth）                                        |
 | 狀態管理      | React Context + `hooks/`                                            |
 | PWA           | `@ducanh2912/next-pwa`（見 [PWA 規範](#pwa-規範)）                     |
-| 儲存          | Supabase Storage（打卡照片，規格已訂；上傳 UI `[未實作]`）             |
+| 儲存          | Supabase Storage（`checkin-photos`；已完成項目可上傳／檢視佐證 `[done]`） |
 | 部署          | Vercel（建議）                                                       |
 
 ### 為什麼選 Supabase 而非 Firebase
@@ -195,7 +195,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 每項可 toggle 勾選；左側**蓋章互動**：未完成為虛線空圓；點擊完成時 **lucide-react `Leaf`**（與 `BrandMark` logo 同圖示）自上方落下（旋轉／scale 彈跳，約 **280ms**）、同時漣漪（#87986A，約 **380ms**）、8 顆粒子自章心散開（主色隨機，約 **0.32–0.48s**）、整列 **spring** 位移（右 8px → 左 4px → 歸位，約 **320ms**）；完成態背景 `#E9F5DB`、邊框 `#97A97C`、標題 `#718355` 與刪除線由左往右劃滿；再點可取消勾選、還原虛線圓與初始樣式
 - `[done]` 完成約一半時頂部**深色膠囊** toast 滑入「🌱 已完成一半！繼續加油」（約 2.5s 後收起）；**全部完成**時：約 **280ms** 後以 **DOM 彩帶**（`confettiFall`，約 60 片）→ 約 **850ms** 後全螢幕慶祝 overlay（`rgba(233,245,219,0.95)`、**`Leaf` 圖示**、`fadeIn`／`bounceIn`／`slideUp`）；overlay 顯示後 **1500ms** 自動關閉，亦可按「太棒了」提前關閉；`prefers-reduced-motion: reduce` 時略過彩帶、直接顯示 overlay；**全完成慶祝（撒花＋overlay）僅在使用者本次勾選／取消後再勾選，剛好由「未全滿」變成「全滿」且 API 成功時觸發**（`fullCompletionCelebrationTick`）；**初次載入若已全完成**則不播放慶祝動畫，僅顯示清單下方「今日全部完成」內聯提示
 - `[done]` 頂部統計：進度條軌 `#CFD5BD`、填色 `#87986A`、高度 6px、`width` 過渡 **0.4s** `cubic-bezier(0.34, 1.56, 0.64, 1)`；今日得分數字 bump 動畫；連續天數 tier 徽章底色 `#FAEEDA`、字色 `#854F0B`
-- `[未實作]` 每項可附上照片（上傳或拖曳）作為打卡佐證，存至 Supabase Storage
+- `[done]` 已完成項目可上傳佐證照片（檔案選擇）至 Storage，並寫入 `daily_checkins.photo_url`；可點縮圖或「檢視大圖」以 **`ImageLightbox`** 全螢幕瀏覽（Esc／點背景關閉）
+- `[未實作]` 拖曳上傳佐證檔案（目前僅檔案選擇）
+- `[done]` **自訂行動與常用收藏**為**單一卡片**（`#gg-custom-favorites-section`）：頂部標題列說明 → 上段「新增項目」（`AddCustomForm` `embedded`）→ 分隔線 → 下段「常用收藏」（`FavoritesPanel` `embedded`、背景略區隔）；避免兩張獨立全寬卡片重複邊框
 - `[done]` 每日午夜重置（時區：UTC+8），重置時間定義為常數 `DAILY_RESET_HOUR`
 
 ### 公版清單管理 `[planned]`
@@ -235,15 +237,18 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 使用者可在 `/profile` 修改暱稱；暱稱顯示於排行榜
 - `[done]` 後端仍以 Google 名稱／email 前綴作為初次後備暱稱（見 `handle_new_user`）
 
-### 自訂行動 `部分完成`
+### 自訂行動 `[done]`
 
 - `[done]` 使用者可新增個人「永續行為」（今日清單表單）
 - `[done]` 可標記對應 SDGs（多選），**自訂 SDG 計入 SDG 覆蓋排名**（與後端統計一致時為 `[done]`）
 - `[done]` 完成得分與公版相同（`DEFAULT_ITEM_POINTS`，暫定 10 分）
 - `[done]` 今日自訂項目上限為 `MAX_CUSTOM_ITEMS`
-- `[done]` ① 今日臨時新增、② 今日新增並收藏（表單勾選「常用收藏」）— 資料寫入 `custom_items` + `daily_checkins`
-- `[未實作]` ③ 直接新增到常用（不加入今日、僅收藏備用）
-- `[未實作]` **常用清單**獨立 UI：從收藏手動加入今日、上限 `MAX_FAVORITE_ITEMS` 等（見下表規格）
+- `[done]` ① 今日臨時新增、② 今日新增並收藏 — 表單**直接顯示**勾選「加入今日時，同時加入常用收藏」（**不使用** `<details>` 收合）；資料寫入 `custom_items` + `user_daily_custom_items`（連結今日），打卡後寫入 `daily_checkins`
+- `[done]` ③ 直接新增到常用（「僅常用」次要按鈕；不加入今日、僅收藏備用）；主按鈕「加入今日清單」約 **70%** 寬並附 **`Plus`** 圖示，次要鈕約 **30%** 附 **`Bookmark`**
+- `[done]` 新增標題輸入時 **比對常用收藏**（與下方「搜尋收藏標題」相同：`includes`）；結果以**與收藏清單相同之卡片列**緊貼於輸入框下方（標題、SDG、已在今日／加入今日、編輯／刪除）；**標題完全相同**列可強調；按「加入今日清單」若同名仍改為 **`linkCustomItemToToday`**（不重複建立）；「僅常用」若同名則阻擋並引導
+- `[done]` **編輯**自訂：`updateCustomItem` 更新 `custom_items.title`／`sdg_ids`（同一筆資料），**今日列與常用列同步顯示**；`EditCustomItemDialog` + 今日自訂列／`FavoritesPanel` 之編輯鈕
+- `[done]` **常用清單**（`FavoritesPanel`）：加入今日、**依標題搜尋**、**編輯**、**刪除**（`deleteCustomItemById` + `ConfirmDialog`）、收藏上限 `MAX_FAVORITE_ITEMS`（見下表規格）
+- `[done]` 今日清單中的自訂列可 **從今日移除**（`unlinkCustomItemFromToday`：刪除當日 `daily_checkins` 與 `user_daily_custom_items`；**不**刪除 `custom_items`；`ConfirmDialog`）
 
 **自訂行動三種狀態（規格；實作進度見上）：**
 
@@ -256,8 +261,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 **常用清單（規格）：**
 
 - 收藏的行動存放於常用清單，不會自動出現在今日清單
-- 需要時從常用清單手動點選加入今日（寫入 `daily_checkins`，`custom_items` 不動）
+- 需要時從常用清單手動點選加入今日（寫入 `user_daily_custom_items` 連結當日；`custom_items` 不動）
 - 常用清單上限為 `MAX_FAVORITE_ITEMS`，暫定 20 個，獨立於今日自訂項目上限
+- 前端已支援搜尋、編輯、刪除（見上）；刪除為**永久刪除**該筆 `custom_items` 及關聯打卡／今日連結，需確認對話框；編輯與新增區「比對常用」見上
 
 ---
 
@@ -325,7 +331,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - 所有使用者公開姓名，無隱私選項
 - 顯示前 `LEADERBOARD_LIMIT` 名
 - **前端**：`/leaderboard` 已實作本週／本月／累計與四個子 tab（總加權／分數／完成數／SDG 覆蓋），並訂閱 Realtime `user_daily_stats`
-- 統計面板：參與人數、全體行動次數、本週最熱門行動、SDG 全覆蓋狀況 `[planned]`
+- 統計面板：本期參與人數（榜單上方 `totalParticipants`）`[done]`；全體行動次數、本週最熱門行動、SDG 全覆蓋狀況等 `[planned]`
 - 圖表：全體 SDG 行動分布（長條圖）、每日完成項次趨勢（折線圖）`[planned]`
 
 ### 群組內排行榜 `[planned]`
@@ -347,9 +353,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - 群組列表顯示：公開/私人 badge、成員數、平均分、SDG 覆蓋數
 - 圖表：各群組平均分比較（長條圖）、各群組 SDG 覆蓋數比較（長條圖）
 
-### 個人記錄 `[planned]`
+### 個人記錄 `[進行中]`
 
-> **`/profile` 目前以暱稱等基礎資料為主**；以下為目標規格。
+> **`/profile`**：暱稱編輯 `[done]`；近 14 天 `user_daily_stats` 表格（原始值）`[done]`。以下仍為目標規格。
 
 - 統計數字全部顯示**原始值**，不標準化
 - 打卡日曆（密度色塊，類似 GitHub contribution graph）
@@ -469,7 +475,7 @@ constants/        → 全域常數、資料定義（config、scoring、sdg、che
 
 **`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGroups.ts`、`useProfile.ts`
 
-**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`
+**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`
 
 **元件分兩種：**
 
@@ -477,7 +483,7 @@ constants/        → 全域常數、資料定義（config、scoring、sdg、che
 負責把資料接進來再渲染。
 
 純展示型元件（UI Component）通常放在 `components/ui/`，所有資料由 props 傳入，
-不依賴任何 context，可在任何地方複用。
+不依賴任何 context，可在任何地方複用。例：`Skeleton`、`SdgTag`、`ImageLightbox`（佐證大圖）、`ConfirmDialog`（確認移除／刪除）。功能型表單／對話框亦可置於 `components/checklist/`（如 `EditCustomItemDialog`）。
 
 > 新增資料夾或模組時，請在 [Changelog](#changelog) 說明其用途，
 > 讓後人不用翻 code 就知道每個資料夾在做什麼。
@@ -773,7 +779,7 @@ create policy "template owner delete" on checklist_items for delete using (
 
 bucket 名稱：`checkin-photos`，建立時勾選 **Public bucket**。
 
-上傳路徑規則：`{user_id}/{日期}_{item_id}.jpg`，例如：
+上傳路徑規則：`{user_id}/{日期}_{item_id 或 custom_item_id}.{jpg|png}`（實作見 `uploadCheckinPhotoFile`），例如：
 
 ```
 abc-123-uid/2026-03-21_item-456.jpg
@@ -1042,7 +1048,7 @@ Tailwind 預設斷點，統一使用，不自訂：
 | 頁面 / 元件 | 手機         | 平板             | 桌面                                      |
 | ----------- | ------------ | ---------------- | ----------------------------------------- |
 | 主導航      | 底部 tab bar | 底部 tab bar     | 左側 sidebar                              |
-| 檢核表      | 單欄列表     | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]`   |
+| 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]`   |
 | 排行榜      | 全寬列表     | 全寬列表         | 全寬列表（側邊圖表為目標 `[planned]`）     |
 | 統計圖表    | 全寬         | 全寬             | 並排顯示 `[planned]`                      |
 
@@ -1085,7 +1091,8 @@ Tailwind 預設斷點，統一使用，不自訂：
 
 - 排行榜沒有資料 → 顯示「還沒有人上榜，成為第一個！」
 - 今日清單全部完成 → 依情境顯示全完成 overlay／內聯「今日全部完成」提示（見今日檢核規格；**非**每次進頁都播動畫）
-- 常用清單是空的 → 顯示引導文字「把常做的行動加入收藏，之後快速取用」`[planned]`（常用清單 UI 尚未實作時可略）
+- 常用清單是空的 → 顯示引導說明（見 `FavoritesPanel` 空狀態）`[done]`
+- 常用清單有資料但搜尋無匹配 → 顯示「沒有符合…的收藏」`[done]`
 
 ### 載入狀態設計
 
@@ -1225,6 +1232,45 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.14 — 輸入一鍵清除、常用連結今日後重置表單
+
+- `[FEAT]` `AddCustomForm`：標題輸入有內容時顯示 **X** 一鍵清除；從即時列表「連結今日」成功後清空標題並重置 SDG／「同時常用」勾選（與新增成功一致）
+- `[FEAT]` `FavoritesPanel`：搜尋收藏輸入有內容時顯示 **X** 一鍵清除
+- `[DOCS]` 本 Changelog
+
+### [2026-03-21] v0.10.13 — 新增輸入框即時常用列表（同收藏卡片列）
+
+- `[FEAT]` `AddCustomForm`：輸入與搜尋框一體化；即時篩選常用並以與 `FavoritesPanel` 一致之卡片呈現；支援編輯／刪除快捷
+- `[DOCS]` 「自訂行動」子項與本 Changelog
+
+### [2026-03-21] v0.10.12 — 新增標題與常用「完全相同」去重
+
+- `[FEAT]` `AddCustomForm`：完全相同時優先提示／使用既有常用；主按鈕改為連結今日；部分符合列表與完全相同區塊分離；placeholder 說明比對邏輯
+- `[DOCS]` 「自訂行動」子項與本 Changelog
+
+### [2026-03-21] v0.10.11 — 自訂編輯、表單 UX、常用快速比對
+
+- `[FEAT]` `updateCustomItem`（Supabase）；`EditCustomItemDialog`；今日自訂列／常用列編輯鈕；`AddCustomForm` 直接顯示「同時常用」勾選、主副鈕約 7:3 與圖示、輸入時比對常用並快速加入今日
+- `[DOCS]` 「自訂行動」、分層職責、`lib/supabase/checklist` 說明與本 Changelog
+
+### [2026-03-21] v0.10.10 — 自訂／收藏合併單卡、移除手機 V 按鈕
+
+- `[FEAT]` `TodayChecklist`：移除手機 V 形捲動按鈕；`AddCustomForm`／`FavoritesPanel` 支援 **`embedded`**，包於同一 `section#gg-custom-favorites-section`
+- `[DOCS]` 「主畫面 — 今日檢核」、**UI/UX → Layout** 檢核表列與 v0.10.9 描述對齊（不再寫 V 形按鈕／雙卡片）
+
+### [2026-03-21] v0.10.9 — 今日檢核 UX 與文件對齊（大圖、區塊順序、收藏管理）
+
+- `[DOCS]` **主畫面 — 今日檢核**：補充 `ImageLightbox` 檢視佐證；拖曳上傳改標 **`[未實作]`**（與檔案選擇／大圖檢視分離，符合大項子項標記規範）。**註：** 後續 UI 已改為單卡合併自訂／收藏並移除 V 按鈕，見 **v0.10.10**
+- `[DOCS]` **自訂行動**：`AddCustomForm` 以 `<details>` 收合「常用收藏（選填）」；`FavoritesPanel` 搜尋／刪除；`unlinkCustomItemFromToday`／`deleteCustomItemById` 與 `ConfirmDialog`
+- `[DOCS]` **技術棧** Storage 一行、**資料庫 Storage** 路徑說明、**分層職責** `components/ui` 範例、**UI/UX** 檢核表列與**空狀態**搜尋無結果
+
+### [2026-03-21] v0.10.8 — 常用清單、打卡照片、排行榜參與人數、個人近況
+
+- `[FEAT]` 今日檢核：`AddCustomForm` 區分「加入今日」／「僅存入常用」；`FavoritesPanel` 常用收藏與「加入今日」；`useTodayChecklist` 串 `fetchFavoriteCustomItems`／`linkCustomItemToToday`／`uploadCheckinPhotoFile`；`ChecklistStampCard` 外層容器＋已完成時佐證上傳列
+- `[FEAT]` 全體排行榜：`fetchGlobalLeaderboard` 回傳 `{ rows, totalParticipants }`，`GlobalLeaderboardPanel` 顯示本期參與人數
+- `[FEAT]` `/profile`：`ProfileDailyStats` 近 14 天每日統計表格（`fetchUserDailyStatsRecent`）
+- `[DOCS]` 系統功能規格／排行榜／個人記錄／空狀態與本 Changelog 對齊現況
 
 ### [2026-03-21] v0.10.7 — INSTRUCTIONS 補齊與現況對齊
 

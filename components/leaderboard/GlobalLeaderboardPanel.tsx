@@ -94,15 +94,19 @@ export function GlobalLeaderboardPanel() {
         <p className="text-[var(--color-ink)]">{error.message}</p>
       ) : null}
 
-      {!loading && !error && (!data || data.length === 0) ? (
+      {!loading && !error && (!data || data.rows.length === 0) ? (
         <p className="rounded-2xl border-[0.5px] border-dashed border-[var(--color-muted)] bg-[var(--color-surface)] p-6 text-center leading-relaxed text-[var(--color-ink-secondary)]">
           還沒有人上榜，成為第一個完成行動的人吧！
         </p>
       ) : null}
 
-      {!loading && data && data.length > 0 ? (
-        <ol className="space-y-2">
-          {data.map((row) => (
+      {!loading && data && data.rows.length > 0 ? (
+        <>
+          <p className="text-sm text-[var(--color-ink-secondary)]">
+            本期共 {data.totalParticipants} 人參與排行
+          </p>
+          <ol className="space-y-2">
+          {data.rows.map((row) => (
             <li
               key={row.userId}
               className="flex min-h-[44px] items-center justify-between gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3"
@@ -121,6 +125,7 @@ export function GlobalLeaderboardPanel() {
             </li>
           ))}
         </ol>
+        </>
       ) : null}
     </div>
   );

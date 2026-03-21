@@ -1,3 +1,4 @@
+import { ProfileDailyStats } from "@/components/profile/ProfileDailyStats";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 
 export default function ProfilePage() {
@@ -6,7 +7,10 @@ export default function ProfilePage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-[var(--color-ink)]">個人資料</h1>
       </header>
-      <ProfileForm />
+      <div className="space-y-6">
+        <ProfileForm />
+        <ProfileDailyStats />
+      </div>
     </>
   );
 }

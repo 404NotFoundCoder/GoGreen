@@ -22,8 +22,8 @@ export function useGlobalLeaderboard(
       if (!opts?.silent) setLoading(true);
       setError(null);
       try {
-        const rows = await fetchGlobalLeaderboard(period, dimension);
-        setData(rows);
+        const result = await fetchGlobalLeaderboard(period, dimension);
+        setData(result);
       } catch (e) {
         setError(e instanceof Error ? e : new Error(String(e)));
       } finally {

@@ -2,14 +2,21 @@
 
 import { MAX_CUSTOM_ITEMS } from "@/constants/config";
 import {
+  addCustomItemFavoriteOnly,
   addCustomItemForToday,
   countTodayCustomSlots,
   fetchActiveChecklistItems,
+  fetchFavoriteCustomItems,
   fetchTodayCheckins,
   fetchTodayCustomRows,
+  deleteCustomItemById,
   getUserTemplateId,
+  linkCustomItemToToday,
+  unlinkCustomItemFromToday,
+  updateCustomItem as updateCustomItemApi,
   setCustomItemDone,
   setPublicItemDone,
+  uploadCheckinPhotoFile,
   type ChecklistItemRow,
   type CustomItemRow,
 } from "@/lib/supabase/checklist";
@@ -49,6 +56,25 @@ export function useTodayChecklist() {
   const [checkinCustomIds, setCheckinCustomIds] = useState<Set<string>>(
     new Set(),
   );
+  const [photoByItemId, setPhotoByItemId] = useState<Record<string, string>>(
+    {},
+  );
+  const [photoByCustomId, setPhotoByCustomId] = useState<
+    Record<string, string>
+  >({});
+  const [favoriteItems, setFavoriteItems] = useState<CustomItemRow[]>([]);
+  const [pendingPhotoUploads, setPendingPhotoUploads] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [pendingUnlinks, setPendingUnlinks] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [pendingUpdates, setPendingUpdates] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [stats, setStats] = useState<TodayStats>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -75,22 +101,36 @@ export function useTodayChecklist() {
       try {
         const tid = await getUserTemplateId(user.id);
         setTemplateId(tid);
-        const [list, checkins, customs, st] = await Promise.all([
+        const [list, checkins, customs, favs, st] = await Promise.all([
           fetchActiveChecklistItems(tid),
           fetchTodayCheckins(user.id, date),
           fetchTodayCustomRows(user.id, date),
+          fetchFavoriteCustomItems(user.id),
           fetchUserDailyStatsForDate(user.id, date),
         ]);
         setItems(list);
         setCustomItems(customs as CustomItemRow[]);
+        setFavoriteItems(favs as CustomItemRow[]);
         const itemDone = new Set<string>();
         const customDone = new Set<string>();
+        const pItem: Record<string, string> = {};
+        const pCustom: Record<string, string> = {};
         for (const c of checkins) {
-          if (c.item_id) itemDone.add(c.item_id as string);
-          if (c.custom_item_id) customDone.add(c.custom_item_id as string);
+          if (c.item_id) {
+            itemDone.add(c.item_id as string);
+            const u = c.photo_url as string | null;
+            if (u) pItem[c.item_id as string] = u;
+          }
+          if (c.custom_item_id) {
+            customDone.add(c.custom_item_id as string);
+            const u = c.photo_url as string | null;
+            if (u) pCustom[c.custom_item_id as string] = u;
+          }
         }
         setCheckinItemIds(itemDone);
         setCheckinCustomIds(customDone);
+        setPhotoByItemId(pItem);
+        setPhotoByCustomId(pCustom);
         setStats(
           st
             ? {
@@ -231,10 +271,10 @@ export function useTodayChecklist() {
     }
   };
 
-  const addCustom = async (
+  const addCustomToToday = async (
     title: string,
     sdgIds: number[],
-    favorite: boolean,
+    alsoFavorite: boolean,
   ) => {
     if (!user) return;
     const slots = await countTodayCustomSlots(user.id, date);
@@ -246,9 +286,116 @@ export function useTodayChecklist() {
       date,
       title,
       sdgIds,
-      isFavorite: favorite,
+      isFavorite: alsoFavorite,
     });
     await load({ silent: true });
+  };
+
+  const addFavoriteOnly = async (title: string, sdgIds: number[]) => {
+    if (!user) return;
+    await addCustomItemFavoriteOnly({
+      userId: user.id,
+      title,
+      sdgIds,
+    });
+    await load({ silent: true });
+  };
+
+  const linkFavoriteToToday = async (customItemId: string) => {
+    if (!user) return;
+    await linkCustomItemToToday({
+      userId: user.id,
+      date,
+      customItemId,
+    });
+    await load({ silent: true });
+  };
+
+  const unlinkCustomFromToday = async (customItemId: string) => {
+    if (!user) return;
+    setPendingUnlinks((prev) => new Set(prev).add(customItemId));
+    try {
+      await unlinkCustomItemFromToday({
+        userId: user.id,
+        date,
+        customItemId,
+      });
+      await load({ silent: true });
+    } finally {
+      setPendingUnlinks((prev) => {
+        const n = new Set(prev);
+        n.delete(customItemId);
+        return n;
+      });
+    }
+  };
+
+  const deleteFavoriteCustom = async (customItemId: string) => {
+    if (!user) return;
+    setPendingDeletes((prev) => new Set(prev).add(customItemId));
+    try {
+      await deleteCustomItemById({
+        userId: user.id,
+        customItemId,
+      });
+      await load({ silent: true });
+    } finally {
+      setPendingDeletes((prev) => {
+        const n = new Set(prev);
+        n.delete(customItemId);
+        return n;
+      });
+    }
+  };
+
+  const updateCustomItem = async (
+    customItemId: string,
+    title: string,
+    sdgIds: number[],
+  ) => {
+    if (!user) return;
+    setPendingUpdates((prev) => new Set(prev).add(customItemId));
+    try {
+      await updateCustomItemApi({
+        userId: user.id,
+        customItemId,
+        title,
+        sdgIds,
+      });
+      await load({ silent: true });
+    } finally {
+      setPendingUpdates((prev) => {
+        const n = new Set(prev);
+        n.delete(customItemId);
+        return n;
+      });
+    }
+  };
+
+  const uploadPhoto = async (args: {
+    itemId?: string;
+    customItemId?: string;
+    file: File;
+  }) => {
+    if (!user) return;
+    const key = args.itemId ? `p:${args.itemId}` : `c:${args.customItemId}`;
+    setPendingPhotoUploads((prev) => new Set(prev).add(key));
+    try {
+      await uploadCheckinPhotoFile({
+        userId: user.id,
+        date,
+        file: args.file,
+        itemId: args.itemId,
+        customItemId: args.customItemId,
+      });
+      await load({ silent: true });
+    } finally {
+      setPendingPhotoUploads((prev) => {
+        const n = new Set(prev);
+        n.delete(key);
+        return n;
+      });
+    }
   };
 
   const totalSlots = items.length + customItems.length;
@@ -272,7 +419,20 @@ export function useTodayChecklist() {
     refetch: load,
     togglePublic,
     toggleCustom,
-    addCustom,
+    addCustomToToday,
+    addFavoriteOnly,
+    linkFavoriteToToday,
+    unlinkCustomFromToday,
+    deleteFavoriteCustom,
+    updateCustomItem,
+    uploadPhoto,
+    favoriteItems,
+    photoByItemId,
+    photoByCustomId,
+    pendingPhotoUploads,
+    pendingUnlinks,
+    pendingDeletes,
+    pendingUpdates,
     totalSlots,
     doneCount,
     allDone,

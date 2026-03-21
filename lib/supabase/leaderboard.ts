@@ -9,13 +9,20 @@ import {
   type LeaderboardDimension,
   type LeaderboardPeriod,
   sortByDimension,
+  type RankedRow,
   type UserPeriodAgg,
 } from "@/lib/utils/leaderboard";
+
+export type GlobalLeaderboardResult = {
+  rows: RankedRow[];
+  /** 該期間內曾出現在 user_daily_stats 的不重複使用者數（榜單僅顯示前 LEADERBOARD_LIMIT 名） */
+  totalParticipants: number;
+};
 
 export async function fetchGlobalLeaderboard(
   period: LeaderboardPeriod,
   dimension: LeaderboardDimension,
-) {
+): Promise<GlobalLeaderboardResult> {
   const supabase = createClient();
   const today = getTodayString();
 
@@ -74,5 +81,7 @@ export async function fetchGlobalLeaderboard(
   }
 
   const weighted = computeWeightedRanks(list);
-  return sortByDimension(list, dimension, weighted);
+  const totalParticipants = list.length;
+  const rows = sortByDimension(list, dimension, weighted);
+  return { rows, totalParticipants };
 }

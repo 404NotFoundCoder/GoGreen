@@ -3,10 +3,14 @@
 import { AddCustomForm } from "@/components/checklist/AddCustomForm";
 import { ChecklistRow } from "@/components/checklist/ChecklistRow";
 import { ChecklistStampCard } from "@/components/checklist/ChecklistStampCard";
+import { EditCustomItemDialog } from "@/components/checklist/EditCustomItemDialog";
+import { FavoritesPanel } from "@/components/checklist/FavoritesPanel";
+import type { CustomItemRow } from "@/lib/supabase/checklist";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getStreakTierBonus } from "@/constants/scoring";
 import { useTodayChecklist } from "@/hooks/useTodayChecklist";
-import { ChevronDown, Flame, Leaf, MoreHorizontal } from "lucide-react";
+import { Flame, Leaf, MoreHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 function BouncyNumber({ value }: { value: number }) {
@@ -69,7 +73,20 @@ export function TodayChecklist() {
     error,
     togglePublic,
     toggleCustom,
-    addCustom,
+    addCustomToToday,
+    addFavoriteOnly,
+    linkFavoriteToToday,
+    unlinkCustomFromToday,
+    deleteFavoriteCustom,
+    updateCustomItem,
+    uploadPhoto,
+    favoriteItems,
+    photoByItemId,
+    photoByCustomId,
+    pendingPhotoUploads,
+    pendingUnlinks,
+    pendingDeletes,
+    pendingUpdates,
     totalSlots,
     doneCount,
     allDone,
@@ -83,6 +100,9 @@ export function TodayChecklist() {
   const [showHalfToast, setShowHalfToast] = useState(false);
   const [dismissCelebrate, setDismissCelebrate] = useState(false);
   const lastCelebrationTickRef = useRef(0);
+  const [unlinkTarget, setUnlinkTarget] = useState<string | null>(null);
+  const [deleteFavoriteId, setDeleteFavoriteId] = useState<string | null>(null);
+  const [editItem, setEditItem] = useState<CustomItemRow | null>(null);
 
   /** 關閉全完成覆蓋層時重置（未全完成或無項目） */
   useEffect(() => {
@@ -139,6 +159,8 @@ export function TodayChecklist() {
   const progressPct =
     totalSlots > 0 ? Math.min(100, (doneCount / totalSlots) * 100) : 0;
 
+  const todayCustomIdSet = new Set(customItems.map((c) => c.id));
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -159,6 +181,51 @@ export function TodayChecklist() {
 
   return (
     <div className="min-w-0 space-y-3">
+      <ConfirmDialog
+        open={unlinkTarget !== null}
+        title="從今日清單移除？"
+        description="會解除今日與此自訂項目的連結，並清除今日打卡紀錄。若仍為常用收藏，之後可從下方收藏再次「加入今日」。"
+        confirmLabel="移除"
+        onConfirm={() => {
+          if (!unlinkTarget) return;
+          const id = unlinkTarget;
+          void unlinkCustomFromToday(id)
+            .then(() => setUnlinkTarget(null))
+            .catch(() => {});
+        }}
+        onCancel={() => setUnlinkTarget(null)}
+        busy={
+          unlinkTarget !== null && pendingUnlinks.has(unlinkTarget)
+        }
+      />
+      <EditCustomItemDialog
+        open={editItem !== null}
+        item={editItem}
+        busy={editItem !== null && pendingUpdates.has(editItem.id)}
+        onClose={() => setEditItem(null)}
+        onSave={async (title, sdgIds) => {
+          if (!editItem) return;
+          await updateCustomItem(editItem.id, title, sdgIds);
+        }}
+      />
+      <ConfirmDialog
+        open={deleteFavoriteId !== null}
+        title="刪除此則收藏？"
+        description="將永久刪除此自訂行動（含今日若已加入的項目與相關打卡紀錄）。此動作無法復原。"
+        danger
+        confirmLabel="刪除"
+        onConfirm={() => {
+          if (!deleteFavoriteId) return;
+          const id = deleteFavoriteId;
+          void deleteFavoriteCustom(id)
+            .then(() => setDeleteFavoriteId(null))
+            .catch(() => {});
+        }}
+        onCancel={() => setDeleteFavoriteId(null)}
+        busy={
+          deleteFavoriteId !== null && pendingDeletes.has(deleteFavoriteId)
+        }
+      />
       <h1 className="sr-only">今日檢核</h1>
       <div
         className={[
@@ -300,6 +367,14 @@ export function TodayChecklist() {
                 done={checkinItemIds.has(item.id)}
                 disabled={pendingToggles.has(`p:${item.id}`)}
                 onToggle={() => void togglePublic(item.id)}
+                photoUrl={photoByItemId[item.id] ?? null}
+                onUploadPhoto={
+                  checkinItemIds.has(item.id)
+                    ? (file) =>
+                        void uploadPhoto({ itemId: item.id, file })
+                    : undefined
+                }
+                photoUploadBusy={pendingPhotoUploads.has(`p:${item.id}`)}
               />
             </div>
           ))}
@@ -316,24 +391,75 @@ export function TodayChecklist() {
                   </span>
                 }
                 sdgIds={item.sdg_ids ?? undefined}
+                photoUrl={photoByCustomId[item.id] ?? null}
+                onUploadPhoto={
+                  checkinCustomIds.has(item.id)
+                    ? (file) =>
+                        void uploadPhoto({ customItemId: item.id, file })
+                    : undefined
+                }
+                photoUploadBusy={pendingPhotoUploads.has(`c:${item.id}`)}
+                onRequestRemoveFromToday={() => setUnlinkTarget(item.id)}
+                removeFromTodayPending={pendingUnlinks.has(item.id)}
+                onRequestEdit={() => setEditItem(item)}
+                editPending={pendingUpdates.has(item.id)}
               />
             </div>
           ))}
         </div>
       ) : null}
 
-      {totalSlots > 0 ? (
-        <div className="flex justify-center py-3 lg:hidden">
-          <span
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] text-[var(--color-ink-secondary)]"
-            aria-hidden
+      <section
+        id="gg-custom-favorites-section"
+        className="scroll-mt-6 overflow-hidden rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)]"
+        aria-labelledby="gg-custom-favorites-title"
+      >
+        <div className="border-b-[0.5px] border-[var(--color-muted)] bg-[var(--color-bg)]/50 px-4 py-3.5">
+          <h2
+            id="gg-custom-favorites-title"
+            className="text-base font-semibold text-[var(--color-ink)]"
           >
-            <ChevronDown className="h-5 w-5" />
-          </span>
+            自訂行動與常用收藏
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+            新增時可比對常用並快速加入今日；編輯自訂會同步今日與收藏。
+          </p>
         </div>
-      ) : null}
-
-      <AddCustomForm onSubmit={addCustom} />
+        <div className="divide-y divide-[var(--color-muted)]/70">
+          <div className="p-4">
+            <AddCustomForm
+              embedded
+              favoriteItems={favoriteItems}
+              todayCustomIds={todayCustomIdSet}
+              onQuickLinkFavorite={linkFavoriteToToday}
+              onRequestEditFavorite={(id) => {
+                const row = favoriteItems.find((f) => f.id === id);
+                if (row) setEditItem(row);
+              }}
+              onRequestDeleteFavorite={(id) => setDeleteFavoriteId(id)}
+              pendingEditIds={pendingUpdates}
+              onAddToToday={addCustomToToday}
+              onAddFavoriteOnly={addFavoriteOnly}
+            />
+          </div>
+          <div className="bg-[var(--color-bg)]/25 p-4">
+            <FavoritesPanel
+              embedded
+              items={favoriteItems}
+              todayCustomIds={todayCustomIdSet}
+              onLinkToToday={linkFavoriteToToday}
+              onRequestDeleteFavorite={(id) => setDeleteFavoriteId(id)}
+              onRequestEditFavorite={(id) => {
+                const row = favoriteItems.find((f) => f.id === id);
+                if (row) setEditItem(row);
+              }}
+              pendingDeleteIds={pendingDeletes}
+              pendingEditIds={pendingUpdates}
+              disabled={false}
+            />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

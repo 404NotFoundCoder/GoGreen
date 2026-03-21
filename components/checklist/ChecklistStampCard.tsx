@@ -1,7 +1,8 @@
 "use client";
 
+import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { SdgTag } from "@/components/ui/SdgTag";
-import { Leaf } from "lucide-react";
+import { Leaf, Pencil, Trash2, ZoomIn } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -77,6 +78,16 @@ type Props = {
   sdgIds?: number[];
   /** SDG 標籤是否顯示中文標籤（預設顯示） */
   sdgShowLabel?: boolean;
+  /** 已完成時可上傳佐證照片 */
+  photoUrl?: string | null;
+  onUploadPhoto?: (file: File) => void;
+  photoUploadBusy?: boolean;
+  /** 自訂項目：從「今日」移除（不刪除收藏本體） */
+  onRequestRemoveFromToday?: () => void;
+  removeFromTodayPending?: boolean;
+  /** 自訂項目：編輯標題／SDG（同一筆 custom_items） */
+  onRequestEdit?: () => void;
+  editPending?: boolean;
 };
 
 export function ChecklistStampCard({
@@ -88,9 +99,18 @@ export function ChecklistStampCard({
   metaLine,
   sdgIds,
   sdgShowLabel = true,
+  photoUrl,
+  onUploadPhoto,
+  photoUploadBusy,
+  onRequestRemoveFromToday,
+  removeFromTodayPending,
+  onRequestEdit,
+  editPending,
 }: Props) {
   const cardRef = useRef<HTMLButtonElement>(null);
   const stampZoneRef = useRef<HTMLSpanElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [stamping, setStamping] = useState(false);
   const [userStamped, setUserStamped] = useState(false);
   const [strikeReady, setStrikeReady] = useState(false);
@@ -126,14 +146,20 @@ export function ChecklistStampCard({
     onToggle();
   };
 
+  const showPhotoRow = Boolean(
+    done && (onUploadPhoto || photoUrl),
+  );
+
   return (
+    <div className="overflow-visible rounded-[14px] border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)]">
+    <div className="flex items-start gap-1">
     <button
       ref={cardRef}
       type="button"
       disabled={disabled || stamping}
       onClick={handleClick}
       className={[
-        "gg-checklist-row group relative flex w-full min-h-[44px] flex-col gap-2 overflow-visible rounded-[14px] border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] px-4 py-[0.85rem] text-left transition-[background-color,border-color] duration-200",
+        "gg-checklist-row group relative flex min-h-[44px] min-w-0 flex-1 flex-col gap-2 overflow-visible rounded-[14px] px-4 py-[0.85rem] text-left transition-[background-color,border-color] duration-200",
         visualDone ? "done" : "",
         stamping ? "stamping" : "",
         strikeReady && visualDone ? "strike-ready" : "",
@@ -194,5 +220,99 @@ export function ChecklistStampCard({
         </div>
       ) : null}
     </button>
+    {(onRequestEdit || onRequestRemoveFromToday) ? (
+      <div className="mt-2 mr-1 flex shrink-0 flex-col gap-0.5">
+        {onRequestEdit ? (
+          <button
+            type="button"
+            disabled={disabled || Boolean(editPending)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRequestEdit();
+            }}
+            className="rounded-full p-2.5 text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary-dark)] disabled:opacity-50"
+            aria-label="編輯此自訂項目"
+          >
+            <Pencil className="h-[18px] w-[18px]" strokeWidth={2} />
+          </button>
+        ) : null}
+        {onRequestRemoveFromToday ? (
+          <button
+            type="button"
+            disabled={disabled || Boolean(removeFromTodayPending)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRequestRemoveFromToday();
+            }}
+            className="rounded-full p-2.5 text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary-dark)] disabled:opacity-50"
+            aria-label="從今日清單移除此自訂項目"
+          >
+            <Trash2 className="h-[18px] w-[18px]" strokeWidth={2} />
+          </button>
+        ) : null}
+      </div>
+    ) : null}
+    </div>
+
+    {showPhotoRow ? (
+      <div className="flex flex-wrap items-center gap-2 border-t-[0.5px] border-[var(--color-muted)] px-4 py-2.5">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          aria-label="選擇佐證照片"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f && onUploadPhoto) void onUploadPhoto(f);
+          }}
+        />
+        {photoUrl ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              className="relative shrink-0 overflow-hidden rounded-lg border-[0.5px] border-[var(--color-muted)] ring-[var(--color-primary-mid)] focus-visible:ring-2 focus-visible:outline-none"
+              aria-label="檢視大圖"
+            >
+              <img
+                src={photoUrl}
+                alt=""
+                className="h-14 w-14 object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-[rgba(45,52,40,0.35)] opacity-0 transition-opacity hover:opacity-100">
+                <ZoomIn className="h-6 w-6 text-white drop-shadow" aria-hidden />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              className="min-h-[40px] rounded-full border-[0.5px] border-[var(--color-primary-strong)] bg-[var(--color-primary-pale)] px-3 py-1.5 text-xs font-medium text-[var(--color-primary-dark)]"
+            >
+              檢視大圖
+            </button>
+            <ImageLightbox
+              src={photoUrl}
+              open={lightboxOpen}
+              onClose={() => setLightboxOpen(false)}
+            />
+          </>
+        ) : null}
+        {onUploadPhoto ? (
+        <button
+          type="button"
+          disabled={photoUploadBusy}
+          onClick={() => fileInputRef.current?.click()}
+          className="min-h-[40px] rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-bg)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] disabled:opacity-50"
+        >
+          {photoUploadBusy ? "上傳中…" : photoUrl ? "更換照片" : "上傳佐證照片"}
+        </button>
+        ) : null}
+      </div>
+    ) : null}
+    </div>
   );
 }

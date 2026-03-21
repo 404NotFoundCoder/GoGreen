@@ -9,6 +9,9 @@ type Props = {
   onToggle: () => void;
   disabled?: boolean;
   sdgShowLabel?: boolean;
+  photoUrl?: string | null;
+  onUploadPhoto?: (file: File) => void;
+  photoUploadBusy?: boolean;
 };
 
 export function ChecklistRow({
@@ -17,6 +20,9 @@ export function ChecklistRow({
   onToggle,
   disabled,
   sdgShowLabel,
+  photoUrl,
+  onUploadPhoto,
+  photoUploadBusy,
 }: Props) {
   return (
     <ChecklistStampCard
@@ -27,6 +33,9 @@ export function ChecklistRow({
       description={item.description}
       sdgIds={item.sdg_ids ?? undefined}
       sdgShowLabel={sdgShowLabel}
+      photoUrl={photoUrl}
+      onUploadPhoto={onUploadPhoto}
+      photoUploadBusy={photoUploadBusy}
     />
   );
 }

@@ -19,7 +19,7 @@ export type RankedRow = UserPeriodAgg & {
   weightedPoints?: number;
 };
 
-function linearPoints(rank: number, n: number): number {
+export function linearPoints(rank: number, n: number): number {
   if (n <= 0) return 0;
   return Math.max(0, n - rank + 1);
 }
@@ -51,7 +51,8 @@ export function computeWeightedRanks(
   return out;
 }
 
-export function sortByDimension(
+/** 完整排序並附名次（不截斷），供個人名次與內部計算使用 */
+export function rankAllUsers(
   users: UserPeriodAgg[],
   dimension: LeaderboardDimension,
   weighted: Map<string, number>,
@@ -70,9 +71,88 @@ export function sortByDimension(
     );
   }
 
-  return sorted.slice(0, LEADERBOARD_LIMIT).map((u, i) => ({
+  return sorted.map((u, i) => ({
     ...u,
     rank: i + 1,
     weightedPoints: weighted.get(u.userId),
+  }));
+}
+
+export function sortByDimension(
+  users: UserPeriodAgg[],
+  dimension: LeaderboardDimension,
+  weighted: Map<string, number>,
+): RankedRow[] {
+  return rankAllUsers(users, dimension, weighted).slice(0, LEADERBOARD_LIMIT);
+}
+
+/** 群組 vs 群組：以成員期間聚合後，對群組取平均標準化分、平均完成數、SDG 覆蓋等 */
+export type GroupPeriodAgg = {
+  groupId: string;
+  name: string;
+  isPublic: boolean;
+  memberCount: number;
+  /** 成員「期間平均標準化分」再對人數平均（無打卡者視為 0） */
+  avgNormalized: number;
+  /** 期間內群組總完成數 ÷ 成員數 */
+  avgCompletedPerMember: number;
+  /** 成員在期間內單日 SDG 覆蓋數之最大 */
+  maxSdgCoverage: number;
+};
+
+export type GroupRankedRow = GroupPeriodAgg & {
+  rank: number;
+  weightedPoints?: number;
+};
+
+export function computeWeightedRanksForGroups(
+  groups: GroupPeriodAgg[],
+): Map<string, number> {
+  const n = groups.length;
+  if (n === 0) return new Map();
+  const byScore = [...groups].sort((a, b) => b.avgNormalized - a.avgNormalized);
+  const byCount = [...groups].sort(
+    (a, b) => b.avgCompletedPerMember - a.avgCompletedPerMember,
+  );
+  const bySdg = [...groups].sort(
+    (a, b) => b.maxSdgCoverage - a.maxSdgCoverage,
+  );
+
+  const out = new Map<string, number>();
+  for (const g of groups) {
+    const rs = byScore.findIndex((x) => x.groupId === g.groupId) + 1;
+    const rc = byCount.findIndex((x) => x.groupId === g.groupId) + 1;
+    const rd = bySdg.findIndex((x) => x.groupId === g.groupId) + 1;
+    out.set(
+      g.groupId,
+      linearPoints(rs, n) + linearPoints(rc, n) + linearPoints(rd, n),
+    );
+  }
+  return out;
+}
+
+export function sortGroupsByDimension(
+  groups: GroupPeriodAgg[],
+  dimension: LeaderboardDimension,
+  weighted: Map<string, number>,
+): GroupRankedRow[] {
+  const sorted = [...groups];
+  if (dimension === "score") {
+    sorted.sort((a, b) => b.avgNormalized - a.avgNormalized);
+  } else if (dimension === "count") {
+    sorted.sort((a, b) => b.avgCompletedPerMember - a.avgCompletedPerMember);
+  } else if (dimension === "sdg") {
+    sorted.sort((a, b) => b.maxSdgCoverage - a.maxSdgCoverage);
+  } else {
+    sorted.sort(
+      (a, b) =>
+        (weighted.get(b.groupId) ?? 0) - (weighted.get(a.groupId) ?? 0),
+    );
+  }
+
+  return sorted.slice(0, LEADERBOARD_LIMIT).map((u, i) => ({
+    ...u,
+    rank: i + 1,
+    weightedPoints: weighted.get(u.groupId),
   }));
 }

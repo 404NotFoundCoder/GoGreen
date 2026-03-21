@@ -1,15 +1,24 @@
-import { GlobalLeaderboardPanel } from "@/components/leaderboard/GlobalLeaderboardPanel";
+import { LeaderboardShell } from "@/components/leaderboard/LeaderboardShell";
 
 export default function LeaderboardPage() {
   return (
     <>
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--color-ink)]">全體排行榜</h1>
-        <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-secondary)]">
-          依時間範圍與維度切換；總加權為三維度線性積分加總。
+      <header className="mb-8 space-y-2">
+        <p className="text-xs font-semibold tracking-[0.2em] text-[var(--color-primary-dark)] uppercase">
+          Leaderboard
+        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-[var(--color-ink)]">
+          排行榜
+        </h1>
+        <p className="max-w-2xl text-sm leading-relaxed text-[var(--color-ink-secondary)]">
+          切換全體、群組內、各群組間與個人視角；支援本週／本月／累計。群組對群組以成員
+          <strong className="font-semibold text-[var(--color-ink)]">
+            平均標準化分
+          </strong>
+          等聚合後排名。
         </p>
       </header>
-      <GlobalLeaderboardPanel />
+      <LeaderboardShell />
     </>
   );
 }

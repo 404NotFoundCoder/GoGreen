@@ -174,7 +174,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 | `/login`         | 登入頁（Google）                          |
 | `/auth/callback` | Supabase OAuth callback                   |
 | `/today`         | 今日檢核（需登入）                        |
-| `/leaderboard`   | 全體排行榜（需登入）                      |
+| `/leaderboard`   | 排行榜：全體／群組內／各群間／個人（需登入） |
 | `/groups`        | 群組（需登入）                            |
 | `/profile`       | 個人／暱稱（需登入）                      |
 
@@ -334,39 +334,35 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - 所有使用者公開姓名，無隱私選項
 - 顯示前 `LEADERBOARD_LIMIT` 名
-- **前端**：`/leaderboard` 已實作本週／本月／累計與四個子 tab（總加權／分數／完成數／SDG 覆蓋），並訂閱 Realtime `user_daily_stats`
-- 統計面板：本期參與人數（榜單上方 `totalParticipants`）`[done]`；全體行動次數、本週最熱門行動、SDG 全覆蓋狀況等 `[planned]`
+- **前端**：`/leaderboard` 主視角 **全體**；本週／本月／累計與四子 tab（總加權／分數／完成數／SDG 覆蓋）；Realtime `user_daily_stats`；參與人數卡、`LeaderboardShell` 質感列表（名次徽章、頭像字首、指標條）
+- 統計面板：本期參與人數 `totalParticipants` `[done]`；全體行動次數、本週最熱門行動、SDG 全覆蓋狀況等 `[planned]`
 - 圖表：全體 SDG 行動分布（長條圖）、每日完成項次趨勢（折線圖）`[planned]`
 
-### 群組內排行榜 `[planned]`
+### 群組內排行榜 `[部分完成]`
 
-> 後端已有 `leaderboard_groups` view 等資料基礎；**專用 UI／頁面尚未實作**，以下為目標規格。
+- **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
+- 統計面板：群組總分、SDG 覆蓋數、最長 streak、本週最活躍成員 `[planned]`
+- 圖表：群組 SDG 行動分布（長條圖）、各成員完成項數比較（長條圖）`[planned]`
+- 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
-- 成員排名（四個子 tab）
-- 統計面板：群組總分、SDG 覆蓋數、最長 streak、本週最活躍成員
-- 圖表：群組 SDG 行動分布（長條圖）、各成員完成項數比較（長條圖）
-- 成員打卡狀態即時更新（透過 Realtime，見 Realtime 規範章節）
+### 群組 vs 群組 `[部分完成]`
 
-### 群組 vs 群組 `[planned]`
-
-> **平均標準化分**等邏輯可於 SQL／RPC 擴充；**前端群組對群組排行榜頁**尚未實作。
-
-- 群組間依**平均標準化分**排名（四個子 tab 同樣適用）
-- 子 tab 的維度改為平均值（平均分、平均完成數、群組 SDG 覆蓋數、總加權）
-- 統計面板：群組總數、最活躍群組、最長 streak
-- 群組列表顯示：公開/私人 badge、成員數、平均分、SDG 覆蓋數
-- 圖表：各群組平均分比較（長條圖）、各群組 SDG 覆蓋數比較（長條圖）
+- **排名邏輯**：群組間以成員期間表現聚合——**平均標準化分**（成員先各自期間平均，再對成員平均）、**平均完成數**（總完成數 ÷ 成員數）、**SDG 覆蓋**（成員單日覆蓋數之最大）、**總加權**（三維度線性積分，與全體同構）。目前於 **`lib/supabase/leaderboard.fetchGroupsLeaderboard`** 以 `user_daily_stats` + `group_members` 客戶端聚合（與文件 `leaderboard_groups` view 概念對齊，可再改為純 SQL／RPC）
+- **前端**：`LeaderboardShell`「各群間」、四子 tab 標籤（平均分／平均完成數／…）`[done]`
+- 統計面板：群組總數等進階摘要、最活躍群組、最長 streak `[planned]`
+- 群組列表：公開/私人 badge、成員數、指標條 `[done]`
+- 圖表：各群組平均分／SDG 覆蓋比較（長條圖）`[planned]`
 
 ### 個人記錄 `[進行中]`
 
-> **`/profile`**：暱稱編輯 `[done]`；近 14 天 `user_daily_stats` 表格（原始值）`[done]`。以下仍為目標規格。
+> **`/profile`**：暱稱編輯 `[done]`；近 14 天 `user_daily_stats` 表格（原始值）`[done]`。
 
-- 統計數字全部顯示**原始值**，不標準化
-- 打卡日曆（密度色塊，類似 GitHub contribution graph）
-- 每日分數趨勢（折線圖）
-- 個人 SDG 覆蓋分布（長條圖）
-- Streak 紀錄（目前連續 / 最長連續）
-- 快速預覽：全體第幾名 / 群組第幾名
+- **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間累計原始分、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
+- 統計數字全部顯示**原始值**，不標準化（與榜單標準化分並存於不同區塊）
+- 打卡日曆（密度色塊，類似 GitHub contribution graph）`[planned]`（`/profile` 可擴充）
+- 每日分數趨勢（折線圖）`[planned]`
+- 個人 SDG 覆蓋分布（長條圖）`[planned]`
+- Streak 紀錄（目前連續 / 最長連續）`[部分]`（榜單已顯示期間最佳單日 streak）
 
 ---
 
@@ -1257,6 +1253,12 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.26 — 排行榜四視角（全體／群組內／各群間／個人）
+
+- `[FEAT]` `lib/supabase/leaderboard`：`fetchGroupMemberLeaderboard`、`fetchGroupsLeaderboard`（群組間平均標準化分等聚合）、`fetchPersonalLeaderboardSnapshot`；`lib/utils/leaderboard`：`rankAllUsers`、`computeWeightedRanksForGroups`
+- `[FEAT]` `LeaderboardShell`：主視角切換、時間範圍、子 tab、質感列表（名次色圈、進度條）；`hooks`：`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`
+- `[DOCS]` 「排行榜設計」四視角狀態與本 Changelog
 
 ### [2026-03-21] v0.10.25 — 群組 UI：信箱 chips、建立者刪除群組、Toast 置頂
 

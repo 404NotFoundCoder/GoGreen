@@ -16,7 +16,19 @@ import {
 import { fetchUserDailyStatsForDate } from "@/lib/supabase/stats";
 import { getTodayString } from "@/lib/utils/date";
 import { useAuthContext } from "@/context/AuthContext";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+function countDoneToday(
+  items: ChecklistItemRow[],
+  customItems: CustomItemRow[],
+  itemIds: Set<string>,
+  customIds: Set<string>,
+): number {
+  return (
+    items.filter((i) => itemIds.has(i.id)).length +
+    customItems.filter((c) => customIds.has(c.id)).length
+  );
+}
 
 export type TodayStats = {
   completed_count: number;
@@ -40,7 +52,15 @@ export function useTodayChecklist() {
   const [stats, setStats] = useState<TodayStats>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const [pendingToggle, setPendingToggle] = useState<string | null>(null);
+  /** 僅阻擋「同一列」重複送出；不同列可並行，避免快速連點時被略過 */
+  const [pendingToggles, setPendingToggles] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const pendingTogglesRef = useRef<Set<string>>(new Set());
+
+  /** 僅在使用者 toggle 成功、由「未全完成」變成「全完成」時遞增（初始讀取已全完成不會 +1） */
+  const [fullCompletionCelebrationTick, setFullCompletionCelebrationTick] =
+    useState(0);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -104,10 +124,33 @@ export function useTodayChecklist() {
   }, [user, authLoading, load]);
 
   const togglePublic = async (itemId: string) => {
-    if (!user || pendingToggle) return;
+    const key = `p:${itemId}`;
+    if (!user || pendingTogglesRef.current.has(key)) return;
+    pendingTogglesRef.current.add(key);
+    setPendingToggles(new Set(pendingTogglesRef.current));
     const done = checkinItemIds.has(itemId);
     const nextDone = !done;
-    setPendingToggle(`p:${itemId}`);
+    const totalSlots = items.length + customItems.length;
+    const doneCountBefore = countDoneToday(
+      items,
+      customItems,
+      checkinItemIds,
+      checkinCustomIds,
+    );
+    const nextItemIds = new Set(checkinItemIds);
+    if (nextDone) nextItemIds.add(itemId);
+    else nextItemIds.delete(itemId);
+    const doneCountAfter = countDoneToday(
+      items,
+      customItems,
+      nextItemIds,
+      checkinCustomIds,
+    );
+    const allDoneBefore = totalSlots > 0 && doneCountBefore === totalSlots;
+    const allDoneAfter = totalSlots > 0 && doneCountAfter === totalSlots;
+    const crossedFullCompletion =
+      nextDone && !allDoneBefore && allDoneAfter;
+
     setCheckinItemIds((prev) => {
       const s = new Set(prev);
       if (nextDone) s.add(itemId);
@@ -122,19 +165,46 @@ export function useTodayChecklist() {
         done: nextDone,
       });
       await load({ silent: true });
+      if (crossedFullCompletion) {
+        setFullCompletionCelebrationTick((n) => n + 1);
+      }
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
       await load({ silent: true });
     } finally {
-      setPendingToggle(null);
+      pendingTogglesRef.current.delete(key);
+      setPendingToggles(new Set(pendingTogglesRef.current));
     }
   };
 
   const toggleCustom = async (customItemId: string) => {
-    if (!user || pendingToggle) return;
+    const key = `c:${customItemId}`;
+    if (!user || pendingTogglesRef.current.has(key)) return;
+    pendingTogglesRef.current.add(key);
+    setPendingToggles(new Set(pendingTogglesRef.current));
     const done = checkinCustomIds.has(customItemId);
     const nextDone = !done;
-    setPendingToggle(`c:${customItemId}`);
+    const totalSlots = items.length + customItems.length;
+    const doneCountBefore = countDoneToday(
+      items,
+      customItems,
+      checkinItemIds,
+      checkinCustomIds,
+    );
+    const nextCustomIds = new Set(checkinCustomIds);
+    if (nextDone) nextCustomIds.add(customItemId);
+    else nextCustomIds.delete(customItemId);
+    const doneCountAfter = countDoneToday(
+      items,
+      customItems,
+      checkinItemIds,
+      nextCustomIds,
+    );
+    const allDoneBefore = totalSlots > 0 && doneCountBefore === totalSlots;
+    const allDoneAfter = totalSlots > 0 && doneCountAfter === totalSlots;
+    const crossedFullCompletion =
+      nextDone && !allDoneBefore && allDoneAfter;
+
     setCheckinCustomIds((prev) => {
       const s = new Set(prev);
       if (nextDone) s.add(customItemId);
@@ -149,11 +219,15 @@ export function useTodayChecklist() {
         done: nextDone,
       });
       await load({ silent: true });
+      if (crossedFullCompletion) {
+        setFullCompletionCelebrationTick((n) => n + 1);
+      }
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
       await load({ silent: true });
     } finally {
-      setPendingToggle(null);
+      pendingTogglesRef.current.delete(key);
+      setPendingToggles(new Set(pendingTogglesRef.current));
     }
   };
 
@@ -202,6 +276,8 @@ export function useTodayChecklist() {
     totalSlots,
     doneCount,
     allDone,
-    pendingToggle,
+    /** 僅在使用者本次操作剛好打滿檢核時遞增；用於觸發全完成慶祝，不含初次載入已全滿 */
+    fullCompletionCelebrationTick,
+    pendingToggles,
   };
 }

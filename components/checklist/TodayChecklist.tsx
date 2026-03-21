@@ -2,63 +2,60 @@
 
 import { AddCustomForm } from "@/components/checklist/AddCustomForm";
 import { ChecklistRow } from "@/components/checklist/ChecklistRow";
+import { ChecklistStampCard } from "@/components/checklist/ChecklistStampCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { SdgTag } from "@/components/ui/SdgTag";
+import { getStreakTierBonus } from "@/constants/scoring";
 import { useTodayChecklist } from "@/hooks/useTodayChecklist";
-import type { CustomItemRow } from "@/lib/supabase/checklist";
-import { Leaf } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { ChevronDown, Flame, Leaf, MoreHorizontal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-function CustomChecklistRow({
-  item,
-  done,
-  onToggle,
-  disabled,
-}: {
-  item: CustomItemRow;
-  done: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
-}) {
+function BouncyNumber({ value }: { value: number }) {
+  const prev = useRef(value);
+  const elRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (prev.current === value) return;
+    prev.current = value;
+    const el = elRef.current;
+    if (!el) return;
+    el.classList.remove("gg-stat-bump");
+    void el.offsetWidth;
+    el.classList.add("gg-stat-bump");
+  }, [value]);
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onToggle}
-      className={[
-        "flex min-h-[44px] w-full flex-col gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] p-4 text-left transition-transform motion-safe:duration-200",
-        "bg-[var(--color-surface)]",
-        done ? "bg-[var(--color-primary-light)]" : "",
-        disabled ? "opacity-60" : "",
-      ].join(" ")}
+    <span
+      ref={elRef}
+      className="inline-block tabular-nums text-[var(--color-ink)]"
     >
-      <div className="flex items-start gap-3">
-        <span
-          className={[
-            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[0.5px]",
-            done
-              ? "border-[var(--color-primary-dark)] bg-[var(--color-primary-pale)] text-[var(--color-primary-dark)]"
-              : "border-[var(--color-muted)] bg-[var(--color-surface-mid)] text-[var(--color-subtle)]",
-          ].join(" ")}
-        >
-          {done ? <Leaf className="h-4 w-4" strokeWidth={2.5} /> : null}
-        </span>
-        <div>
-          <p className="text-[var(--color-ink)] font-medium">{item.title}</p>
-          <p className="mt-0.5 text-xs text-[var(--color-ink-secondary)]">
-            自訂 · {item.is_favorite ? "已收藏" : "今日新增"}
-          </p>
-        </div>
-      </div>
-      {item.sdg_ids?.length ? (
-        <div className="flex flex-wrap gap-1.5 pl-11">
-          {item.sdg_ids.map((id) => (
-            <SdgTag key={id} id={id} />
-          ))}
-        </div>
-      ) : null}
-    </button>
+      {value}
+    </span>
   );
+}
+
+function spawnDomConfetti() {
+  if (typeof document === "undefined") return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const colors = [
+    "#87986A",
+    "#B5C99A",
+    "#CFE1B9",
+    "#E9F5DB",
+    "#718355",
+    "#97A97C",
+  ];
+  for (let i = 0; i < 60; i++) {
+    const p = document.createElement("div");
+    p.className = "gg-confetti-piece";
+    const size = 4 + Math.random() * 8;
+    p.style.left = `${Math.random() * 100}%`;
+    p.style.top = "-10px";
+    p.style.background = colors[Math.floor(Math.random() * colors.length)]!;
+    p.style.animationDelay = `${Math.random() * 0.45}s`;
+    p.style.animationDuration = `${0.85 + Math.random() * 0.45}s`;
+    p.style.width = `${size}px`;
+    p.style.height = `${size}px`;
+    document.body.appendChild(p);
+    window.setTimeout(() => p.remove(), 2000);
+  }
 }
 
 export function TodayChecklist() {
@@ -77,25 +74,70 @@ export function TodayChecklist() {
     doneCount,
     allDone,
     date,
-    pendingToggle,
+    pendingToggles,
+    fullCompletionCelebrationTick,
   } = useTodayChecklist();
 
-  const celebrated = useRef(false);
+  const [showCelebrateOverlay, setShowCelebrateOverlay] = useState(false);
+  const halfToastShown = useRef(false);
+  const [showHalfToast, setShowHalfToast] = useState(false);
+  const [dismissCelebrate, setDismissCelebrate] = useState(false);
+  const lastCelebrationTickRef = useRef(0);
 
+  /** 關閉全完成覆蓋層時重置（未全完成或無項目） */
   useEffect(() => {
     if (!allDone || totalSlots === 0) {
-      celebrated.current = false;
+      setShowCelebrateOverlay(false);
+    }
+  }, [allDone, totalSlots]);
+
+  /**
+   * 僅在 `fullCompletionCelebrationTick` 遞增時觸發（使用者本次點擊剛好打滿）；
+   * 初次載入已全完成 tick 仍為 0，不會進入此 effect。
+   */
+  useEffect(() => {
+    if (fullCompletionCelebrationTick === 0) return;
+    if (fullCompletionCelebrationTick === lastCelebrationTickRef.current) return;
+    lastCelebrationTickRef.current = fullCompletionCelebrationTick;
+
+    setDismissCelebrate(false);
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (mq.matches) {
+      setShowCelebrateOverlay(true);
       return;
     }
-    if (celebrated.current) return;
-    celebrated.current = true;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (mq.matches) return;
-    void import("canvas-confetti").then((mod) => {
-      const c = mod.default;
-      c({ particleCount: 80, spread: 70, origin: { y: 0.65 } });
-    });
-  }, [allDone, totalSlots]);
+    const t1 = window.setTimeout(() => spawnDomConfetti(), 280);
+    const t2 = window.setTimeout(() => setShowCelebrateOverlay(true), 850);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [fullCompletionCelebrationTick]);
+
+  useEffect(() => {
+    if (totalSlots < 2 || allDone) return;
+    const half = Math.ceil(totalSlots / 2);
+    if (doneCount === half && !halfToastShown.current) {
+      halfToastShown.current = true;
+      setShowHalfToast(true);
+      const t = window.setTimeout(() => setShowHalfToast(false), 2500);
+      return () => window.clearTimeout(t);
+    }
+  }, [doneCount, totalSlots, allDone]);
+
+  useEffect(() => {
+    if (!allDone) setDismissCelebrate(false);
+  }, [allDone]);
+
+  /** 覆蓋層顯示後 1500ms 自動關閉（可提前按「太棒了」） */
+  useEffect(() => {
+    if (!showCelebrateOverlay || dismissCelebrate) return;
+    const t = window.setTimeout(() => setDismissCelebrate(true), 1500);
+    return () => window.clearTimeout(t);
+  }, [showCelebrateOverlay, dismissCelebrate]);
+
+  const progressPct =
+    totalSlots > 0 ? Math.min(100, (doneCount / totalSlots) * 100) : 0;
 
   if (loading) {
     return (
@@ -117,80 +159,181 @@ export function TodayChecklist() {
 
   return (
     <div className="min-w-0 space-y-3">
-        <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] p-4">
-          <p className="text-sm text-[var(--color-ink-secondary)]">日期（UTC+8）</p>
-          <p className="mt-1 text-lg font-semibold text-[var(--color-ink)]">
-            {date}
+      <h1 className="sr-only">今日檢核</h1>
+      <div
+        className={[
+          "gg-milestone-toast pointer-events-none",
+          showHalfToast ? "gg-milestone-toast--show" : "",
+        ].join(" ")}
+        role="status"
+        aria-live="polite"
+      >
+        🌱 已完成一半！繼續加油
+      </div>
+
+      {allDone && totalSlots > 0 && showCelebrateOverlay && !dismissCelebrate ? (
+        <div
+          className="gg-celebrate-overlay fixed inset-0 z-[998] flex flex-col items-center justify-center gap-3 bg-[rgba(233,245,219,0.95)] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="celebrate-title"
+        >
+          <div className="gg-celebrate-icon flex justify-center" aria-hidden>
+            <Leaf
+              className="text-[var(--color-primary-dark)]"
+              strokeWidth={2}
+              size={72}
+            />
+          </div>
+          <p
+            id="celebrate-title"
+            className="gg-celebrate-title text-2xl font-bold text-[var(--color-ink)]"
+          >
+            今日全部完成！
           </p>
-          {stats ? (
-            <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-[var(--color-ink-secondary)]">進度</dt>
-                <dd className="font-medium text-[var(--color-ink)]">
+          <p className="gg-celebrate-sub text-sm text-[var(--color-ink-secondary)]">
+            你為地球做出了改變 ✨
+          </p>
+          <button
+            type="button"
+            className="gg-celebrate-btn mt-2 min-h-[44px] rounded-full bg-[#87986A] px-6 py-2.5 text-sm font-medium text-white"
+            onClick={() => setDismissCelebrate(true)}
+          >
+            太棒了
+          </button>
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[11px] leading-snug text-[var(--color-ink-secondary)]">
+            日期 (UTC+8) {date}
+          </p>
+          <button
+            type="button"
+            className="-m-2 shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-ink)]"
+            aria-label="更多"
+          >
+            <MoreHorizontal className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+        {stats ? (
+          <>
+            <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+              <div className="min-w-0">
+                <dt className="text-[11px] text-[var(--color-ink-secondary)]">
+                  進度
+                </dt>
+                <dd className="mt-0.5 text-[20px] font-bold tabular-nums text-[var(--color-ink)]">
                   {doneCount}/{totalSlots || "—"}
                 </dd>
               </div>
-              <div>
-                <dt className="text-[var(--color-ink-secondary)]">今日得分</dt>
-                <dd className="font-medium text-[var(--color-ink)]">
-                  {stats.raw_score}
+              <div className="min-w-0">
+                <dt className="text-[11px] text-[var(--color-ink-secondary)]">
+                  今日得分
+                </dt>
+                <dd className="mt-0.5 text-[20px] font-bold tabular-nums text-[var(--color-ink)]">
+                  <BouncyNumber value={stats.raw_score} />
                 </dd>
               </div>
-              <div>
-                <dt className="text-[var(--color-ink-secondary)]">連續天數</dt>
-                <dd className="font-medium text-[var(--color-ink)]">
-                  {stats.streak} 天
+              <div className="min-w-0">
+                <dt className="text-[11px] text-[var(--color-ink-secondary)]">
+                  連續天數
+                </dt>
+                <dd className="mt-0.5 flex flex-wrap items-center justify-center gap-1">
+                  <span className="text-[20px] font-bold tabular-nums text-[var(--color-ink)]">
+                    {stats.streak}天
+                  </span>
+                  <Flame
+                    className="h-5 w-5 shrink-0 text-[#ea580c]"
+                    aria-hidden
+                  />
+                  {getStreakTierBonus(stats.streak) > 0 ? (
+                    <span className="gg-tier-badge inline-flex min-h-[22px] items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium">
+                      🔥 +{getStreakTierBonus(stats.streak)}
+                    </span>
+                  ) : null}
                 </dd>
               </div>
             </dl>
-          ) : null}
+            <div className="mt-2">
+              <div className="h-1.5 w-full overflow-hidden rounded-[3px] bg-[#CFD5BD]">
+                <div
+                  className="h-full rounded-[3px] bg-[#87986A] transition-[width] duration-[400ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      {totalSlots === 0 ? (
+        <p className="rounded-2xl border-[0.5px] border-dashed border-[var(--color-muted)] bg-[var(--color-bg)] p-6 text-center leading-relaxed text-[var(--color-ink-secondary)]">
+          尚無可用項目。請確認已在 Supabase 執行 migration 並建立預設公版。
+        </p>
+      ) : (
+        <h2 className="mb-2.5 text-[11px] font-medium tracking-[0.08em] text-[var(--color-ink-secondary)] uppercase">
+          今日行動
+        </h2>
+      )}
+
+      {allDone &&
+      totalSlots > 0 &&
+      !showCelebrateOverlay &&
+      (dismissCelebrate || fullCompletionCelebrationTick === 0) ? (
+        <div
+          className="rounded-2xl border-[0.5px] border-[var(--color-primary-dark)] bg-[var(--color-primary-light)] p-4 text-center text-[var(--color-primary-dark)]"
+          role="status"
+        >
+          <p className="font-semibold">今日全部完成！</p>
+          <p className="mt-1 text-sm">做得好，明天再見 🌿</p>
         </div>
+      ) : null}
 
-        {totalSlots === 0 ? (
-          <p className="rounded-2xl border-[0.5px] border-dashed border-[var(--color-muted)] bg-[var(--color-bg)] p-6 text-center leading-relaxed text-[var(--color-ink-secondary)]">
-            尚無可用項目。請確認已在 Supabase 執行 migration 並建立預設公版。
-          </p>
-        ) : null}
-
-        {allDone && totalSlots > 0 ? (
-          <div
-            className="rounded-2xl border-[0.5px] border-[var(--color-primary-dark)] bg-[var(--color-primary-light)] p-4 text-center text-[var(--color-primary-dark)]"
-            role="status"
-          >
-            <p className="font-semibold">今日全部完成！</p>
-            <p className="mt-1 text-sm">做得好，明天再見 🌿</p>
-          </div>
-        ) : null}
-
-        <div className="space-y-3">
+      {totalSlots > 0 ? (
+        <div className="space-y-2">
           {items.map((item) => (
-            <div
-              key={item.id}
-              className="motion-safe:[transition:transform_0.25s_ease-out]"
-            >
+            <div key={item.id}>
               <ChecklistRow
                 item={item}
                 done={checkinItemIds.has(item.id)}
-                disabled={pendingToggle === `p:${item.id}`}
+                disabled={pendingToggles.has(`p:${item.id}`)}
                 onToggle={() => void togglePublic(item.id)}
               />
             </div>
           ))}
-        </div>
-
-        <div className="space-y-3">
           {customItems.map((item) => (
-            <CustomChecklistRow
-              key={item.id}
-              item={item}
-              done={checkinCustomIds.has(item.id)}
-              disabled={pendingToggle === `c:${item.id}`}
-              onToggle={() => void toggleCustom(item.id)}
-            />
+            <div key={item.id}>
+              <ChecklistStampCard
+                done={checkinCustomIds.has(item.id)}
+                disabled={pendingToggles.has(`c:${item.id}`)}
+                onToggle={() => void toggleCustom(item.id)}
+                title={item.title}
+                metaLine={
+                  <span>
+                    自訂 · {item.is_favorite ? "已收藏" : "今日新增"}
+                  </span>
+                }
+                sdgIds={item.sdg_ids ?? undefined}
+              />
+            </div>
           ))}
         </div>
+      ) : null}
 
-        <AddCustomForm onSubmit={addCustom} />
+      {totalSlots > 0 ? (
+        <div className="flex justify-center py-3 lg:hidden">
+          <span
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] text-[var(--color-ink-secondary)]"
+            aria-hidden
+          >
+            <ChevronDown className="h-5 w-5" />
+          </span>
+        </div>
+      ) : null}
+
+      <AddCustomForm onSubmit={addCustom} />
     </div>
   );
 }

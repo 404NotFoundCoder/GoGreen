@@ -2,6 +2,7 @@
 
 > 本文件是專案的核心開發規範與活文件。
 > **每當新增功能、建立新檔案、調整架構或修改常數，都必須同步更新本文件。**
+> **若有重要更動**（例如：資料庫 schema／RLS／migration、使用者可見功能、計分與排行榜規則、認證流程），**一律**在合併前更新本文件對應章節並於 **Changelog** 記錄，避免規格與實作脫節。
 > 後人應能只讀這份文件，就理解整個專案的結構、設計決策與脈絡。
 
 ---
@@ -166,9 +167,9 @@ SDG tag 沿用聯合國官方配色，定義在 `constants/sdg.ts`，不套用�
 ### 主畫面 — 今日檢核 `部分完成`
 
 - `[done]` 顯示當日公版行動清單（依使用者範本；群組專屬公版清單規格見「公版清單管理」）
-- `[done]` 每項可 toggle 勾選；列完成時有基本過渡與葉片圖示回饋
-- `[planned]` 遊戲感進階動畫（彈跳、植物／葉片生長等細緻效果）
-- `[done]` 全部完成觸發慶祝動畫（canvas-confetti；尊重 `prefers-reduced-motion`）
+- `[done]` 每項可 toggle 勾選；左側**蓋章互動**：未完成為虛線空圓；點擊完成時 **lucide-react `Leaf`**（與 `BrandMark` logo 同圖示）自上方落下（旋轉／scale 彈跳，約 **280ms**）、同時漣漪（#87986A，約 **380ms**）、8 顆粒子自章心散開（主色隨機，約 **0.32–0.48s**）、整列 **spring** 位移（右 8px → 左 4px → 歸位，約 **320ms**）；完成態背景 `#E9F5DB`、邊框 `#97A97C`、標題 `#718355` 與刪除線由左往右劃滿；再點可取消勾選、還原虛線圓與初始樣式
+- `[done]` 完成約一半時頂部**深色膠囊** toast 滑入「🌱 已完成一半！繼續加油」（約 2.5s 後收起）；**全部完成**時：約 **280ms** 後以 **DOM 彩帶**（`confettiFall`，約 60 片）→ 約 **850ms** 後全螢幕慶祝 overlay（`rgba(233,245,219,0.95)`、**`Leaf` 圖示**、`fadeIn`／`bounceIn`／`slideUp`）；overlay 顯示後 **1500ms** 自動關閉，亦可按「太棒了」提前關閉；`prefers-reduced-motion: reduce` 時略過彩帶、直接顯示 overlay；**全完成慶祝（撒花＋overlay）僅在使用者本次勾選／取消後再勾選，剛好由「未全滿」變成「全滿」且 API 成功時觸發**（`fullCompletionCelebrationTick`）；**初次載入若已全完成**則不播放慶祝動畫，僅顯示清單下方「今日全部完成」內聯提示
+- `[done]` 頂部統計：進度條軌 `#CFD5BD`、填色 `#87986A`、高度 6px、`width` 過渡 **0.4s** `cubic-bezier(0.34, 1.56, 0.64, 1)`；今日得分數字 bump 動畫；連續天數 tier 徽章底色 `#FAEEDA`、字色 `#854F0B`
 - `[未實作]` 每項可附上照片（上傳或拖曳）作為打卡佐證，存至 Supabase Storage
 - `[done]` 每日午夜重置（時區：UTC+8），重置時間定義為常數 `DAILY_RESET_HOUR`
 
@@ -1076,6 +1077,8 @@ Chrome DevTools 的裝置模擬器即可，不需要實體裝置。
 
 **這份文件是活的，必須跟 code 一起更新。**
 
+**原則：** 任何會影響「資料庫結構／權限」「使用者行為」「API 契約」「分數或排行榜規則」的變更，都視為**重要更動**，必須同步更新本文件（含 Changelog 一筆）；僅修 typo、純重構且不改行為者，可酌情只更新 Changelog 或省略，但請在 PR／commit 說明。
+
 以下情境發生時，請同步修改本文件對應區塊，並在 Changelog 新增一筆紀錄：
 
 | 情境                                           | 應更新的區塊                                      |
@@ -1188,6 +1191,27 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.4 — 全完成慶祝僅限當次操作打滿
+
+- `[FEAT]` `useTodayChecklist` 新增 `fullCompletionCelebrationTick`；僅在 toggle 成功且由未全滿→全滿時遞增；`TodayChecklist` 依此觸發撒花／overlay，**初次讀取已全完成不觸發**
+- `[DOCS]` 「主畫面 — 今日檢核」與本 Changelog
+
+### [2026-03-21] v0.10.3 — 蓋章 Leaf／動效加強／文件規範
+
+- `[FEAT]` 今日檢核蓋章與全完成 overlay 改為 **lucide-react `Leaf`**（與 `BrandMark` 一致）；修正 `.gg-stamp-particle-dot` 被重複定義覆寫導致粒子動畫變弱之問題；整體動畫時長縮短、幅度略加大；全完成 overlay **1500ms** 自動關閉；撒花／overlay 進場 **280ms → 850ms**
+- `[DOCS]` 文件開頭與「開發者文件維護規範」：訂明 **重要更動（資料庫、功能等）必須更新文件**；Changelog 與「主畫面 — 今日檢核」同步
+
+### [2026-03-21] v0.10.2 — 今日檢核動效對齊參考 HTML
+
+- `[FEAT]` 全完成改為 **DOM 彩帶**（移除 canvas-confetti）；時序 400ms 撒花 → 1100ms overlay；overlay **1000ms** 自動關閉；半程 toast 深色膠囊；統計列字級／進度條／tier 徽章對齊參考稿（`TodayChecklist`、`globals.css`）
+- `[FEAT]` 全站主字型改 **Noto Sans TC**（`app/layout.tsx`）
+- `[DOCS]` 「主畫面 — 今日檢核」與本 Changelog
+
+### [2026-03-21] v0.10.1 — 今日檢核蓋章與慶祝動效
+
+- `[FEAT]` 今日檢核：每列左側蓋章（落下／漣漪／粒子／列彈跳）、完成樣式與刪除線、半程 toast、全完成 overlay + confetti；頂部進度條與分數彈跳（`ChecklistStampCard`、`TodayChecklist`、`globals.css`）
+- `[DOCS]` 本節「主畫面 — 今日檢核」改為反映上述已實作項目
 
 ### [2026-03-21] v0.10.0 — 首頁／載入／規格標記
 

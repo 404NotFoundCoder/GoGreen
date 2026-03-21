@@ -9,3 +9,13 @@ export const STREAK_TIERS = [
   { min: 14, bonus: 30 },
   { min: 30, bonus: 50 },
 ] as const;
+
+/** 依目前連續天數回傳所屬 tier 的 streak 加成（顯示於今日檢核統計區） */
+export function getStreakTierBonus(streakDays: number): number {
+  if (streakDays < 1) return 0;
+  let bonus = 0;
+  for (const t of STREAK_TIERS) {
+    if (streakDays >= t.min) bonus = t.bonus;
+  }
+  return bonus;
+}

@@ -20,24 +20,32 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-noto-tc);
   --font-mono: var(--font-geist-mono);
 }
 
+/* 僅壓縮 transition，勿對全域 animation-duration 用 !important，否則會蓋掉蓋章／spring 等動畫 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gg-stamp-spring,
+  .gg-stat-bump,
+  .gg-confetti-piece,
+  .gg-stamp-particle-dot {
+    animation-duration: 0.2s !important;
   }
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-ink);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-noto-tc), ui-sans-serif, system-ui, sans-serif;
 }
 
 /* 成功打勾：元件 SuccessCheckmark */
@@ -69,4 +77,294 @@ body {
 
 .gg-success-icon {
   animation: gg-success-icon 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.08s both;
+}
+
+/* 今日檢核：與參考 HTML 範例同一套 keyframes（stampDrop / ripple / spring / bump / particleFly） */
+@keyframes stampDrop {
+  0% {
+    opacity: 0;
+    transform: scale(2.45) rotate(-18deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.82) rotate(4deg);
+  }
+  78% {
+    transform: scale(1.12) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.gg-stamp-wrap {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gg-stamp-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px dashed #b3ba98;
+  background: #f3f4ef;
+  transition: border-color 0.3s;
+}
+
+.gg-checklist-row.done .gg-stamp-circle {
+  border-color: transparent;
+}
+
+.gg-stamp-leaf {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  opacity: 0;
+  transform: scale(2.2) rotate(-22deg);
+  transition: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gg-checklist-row.done .gg-stamp-leaf {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.gg-checklist-row.stamping .gg-stamp-leaf {
+  animation: stampDrop 0.28s cubic-bezier(0.18, 1, 0.32, 1) forwards;
+}
+
+.gg-stamp-ripple-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  margin-top: -22px;
+  border-radius: 50%;
+  border: 2px solid #87986a;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gg-checklist-row.stamping .gg-stamp-ripple-ring {
+  animation: ripple 0.38s ease-out forwards;
+}
+
+@keyframes particleFly {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx, 0px), var(--ty, 0px)) scale(0);
+    opacity: 0;
+  }
+}
+
+.gg-stamp-particle-dot {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 999;
+  animation: particleFly 0.5s cubic-bezier(0.12, 0.85, 0.22, 1) forwards;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-14px) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(900deg);
+    opacity: 0;
+  }
+}
+
+.gg-confetti-piece {
+  position: fixed;
+  pointer-events: none;
+  z-index: 997;
+  border-radius: 2px;
+  animation: confettiFall 1.05s cubic-bezier(0.2, 0.85, 0.4, 1) forwards;
+}
+
+/* 整張檢核卡片：與範例一致（右 6px → 左 3px → 回正 + 輕微 scale） */
+@keyframes spring {
+  0% {
+    transform: translateX(0) scale(1);
+  }
+  32% {
+    transform: translateX(8px) scale(1.02);
+  }
+  64% {
+    transform: translateX(-4px) scale(0.98);
+  }
+  100% {
+    transform: translateX(0) scale(1);
+  }
+}
+
+.gg-stamp-spring {
+  animation: spring 0.32s cubic-bezier(0.34, 1.85, 0.55, 1);
+}
+
+/* 檢核列：done 靜態樣式（stamping 階段不加 .done） */
+.gg-checklist-row.done {
+  background-color: #e9f5db;
+  border-color: #97a97c;
+}
+
+.gg-checklist-row.done .gg-checklist-title {
+  color: #718355;
+}
+
+.gg-checklist-row.done .gg-checklist-desc {
+  color: rgb(113 131 85 / 0.9);
+}
+
+.gg-checklist-title-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.gg-checklist-title-wrap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 20;
+  height: 2px;
+  width: 0;
+  margin-top: -1px;
+  background: #718355;
+}
+
+.gg-checklist-row.done.strike-ready .gg-checklist-title-wrap::after {
+  width: 100%;
+}
+
+.gg-checklist-row.done.strike-ready.user-stamped .gg-checklist-title-wrap::after {
+  transition: width 0.32s ease 0.08s;
+}
+
+.gg-checklist-row.done .gg-checklist-title-wrap::after {
+  height: 1.5px;
+  margin-top: -0.75px;
+}
+
+/* 今日得分：與範例 bump 完全一致 */
+@keyframes bump {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.38);
+    color: #718355;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.gg-stat-bump {
+  animation: bump 0.3s ease;
+}
+
+/* 半程 toast：與範例（深色膠囊 + 滑入） */
+.gg-milestone-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%) translateY(-80px);
+  background: #3d4535;
+  color: #e9f5db;
+  padding: 10px 20px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.gg-milestone-toast.gg-milestone-toast--show {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 連續天數 tier 徽章（與參考 HTML .tier-badge） */
+.gg-tier-badge {
+  background: #faeeda;
+  color: #854f0b;
+}
+
+/* 全部完成 overlay：fadeIn + bounceIn + slideUp */
+@keyframes gg-celebrate-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes gg-celebrate-bounce-in {
+  0% {
+    transform: scale(0);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes gg-celebrate-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gg-celebrate-overlay {
+  animation: gg-celebrate-fade-in 0.28s ease;
+}
+
+.gg-celebrate-icon {
+  animation: gg-celebrate-bounce-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.gg-celebrate-title {
+  animation: gg-celebrate-slide-up 0.38s ease 0.12s both;
+}
+
+.gg-celebrate-sub {
+  animation: gg-celebrate-slide-up 0.38s ease 0.2s both;
+}
+
+.gg-celebrate-btn {
+  animation: gg-celebrate-slide-up 0.38s ease 0.28s both;
 }

@@ -12,6 +12,7 @@ export function translateGroupRpcError(e: unknown): string {
     ["email_mismatch", "登入信箱與邀請不符，請使用受邀信箱登入"],
     ["no_email_in_session", "無法取得登入信箱，請確認以 Google 帳號登入"],
     ["not_public_or_missing", "找不到公開群組或無法加入"],
+    ["already_in_group", "每人只能加入一個群組；請先退出目前群組再操作"],
   ];
   const lower = raw.toLowerCase();
   for (const [k, v] of pairs) {

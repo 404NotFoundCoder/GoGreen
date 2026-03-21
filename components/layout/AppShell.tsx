@@ -1,5 +1,6 @@
 "use client";
 
+import { ToastProvider } from "@/context/ToastContext";
 import { NicknameOnboardingGate } from "@/components/layout/NicknameOnboardingGate";
 import { BrandMark } from "@/components/layout/BrandMark";
 import { UserAccountMenu } from "@/components/layout/UserAccountMenu";
@@ -45,6 +46,7 @@ function NavLink({
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <NicknameOnboardingGate>
+      <ToastProvider>
       <div className="flex min-h-full flex-1 flex-col bg-[var(--color-bg)] lg:flex-row">
         <aside className="hidden border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-56 lg:shrink-0 lg:flex-col lg:border-b-0 lg:border-r lg:px-3 lg:py-6">
           <div className="px-1 pb-5">
@@ -80,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </nav>
       </div>
+      </ToastProvider>
     </NicknameOnboardingGate>
   );
 }

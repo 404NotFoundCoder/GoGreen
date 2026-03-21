@@ -1,5 +1,7 @@
 import { DEFAULT_TEMPLATE_ID } from "@/constants/checklist";
 import { createClient } from "@/lib/supabase/client";
+import { translateGroupRpcError } from "@/lib/utils/groupErrors";
+import { parseInviteEmails } from "@/lib/utils/groupInvites";
 import { generateInviteCode } from "@/lib/utils/invite";
 
 export async function listMyGroups(userId: string) {
@@ -55,6 +57,30 @@ export async function createGroupEmailInvite(groupId: string, email: string) {
   return data as string;
 }
 
+export type EmailInviteBatchResult = {
+  sent: number;
+  failed: { email: string; message: string }[];
+};
+
+export async function createGroupEmailInvites(
+  groupId: string,
+  raw: string,
+): Promise<EmailInviteBatchResult> {
+  const emails = parseInviteEmails(raw);
+  if (emails.length === 0) return { sent: 0, failed: [] };
+  const failed: { email: string; message: string }[] = [];
+  let sent = 0;
+  for (const email of emails) {
+    try {
+      await createGroupEmailInvite(groupId, email);
+      sent += 1;
+    } catch (e) {
+      failed.push({ email, message: translateGroupRpcError(e) });
+    }
+  }
+  return { sent, failed };
+}
+
 export async function respondGroupEmailInvite(inviteId: string, accept: boolean) {
   const supabase = createClient();
   const { error } = await supabase.rpc("respond_group_email_invite", {
@@ -82,6 +108,15 @@ export async function createGroup(args: {
   isPublic: boolean;
 }) {
   const supabase = createClient();
+  const { count, error: cntErr } = await supabase
+    .from("group_members")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", args.userId);
+  if (cntErr) throw cntErr;
+  if ((count ?? 0) > 0) {
+    throw new Error("already_in_group");
+  }
+
   const inviteCode = args.isPublic ? null : generateInviteCode();
 
   const { data: g, error } = await supabase
@@ -131,5 +166,12 @@ export async function leaveGroup(groupId: string, userId: string) {
     .delete()
     .eq("group_id", groupId)
     .eq("user_id", userId);
+  if (error) throw error;
+}
+
+/** 僅建立者（RLS g_delete）可刪除；連帶 cascade 成員與邀請 */
+export async function deleteGroup(groupId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("groups").delete().eq("id", groupId);
   if (error) throw error;
 }

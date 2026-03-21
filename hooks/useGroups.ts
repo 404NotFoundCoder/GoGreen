@@ -2,7 +2,8 @@
 
 import {
   createGroup,
-  createGroupEmailInvite,
+  createGroupEmailInvites,
+  deleteGroup,
   joinPrivateGroupRpc,
   joinPublicGroupRpc,
   leaveGroup,
@@ -90,15 +91,22 @@ export function useGroups() {
     await load({ silent: true });
   };
 
-  const sendEmailInvite = async (groupId: string, email: string) => {
-    if (!user) return;
-    await createGroupEmailInvite(groupId, email.trim());
+  const sendEmailInvites = async (groupId: string, raw: string) => {
+    if (!user) return { sent: 0, failed: [] as { email: string; message: string }[] };
+    const r = await createGroupEmailInvites(groupId, raw);
     await load({ silent: true });
+    return r;
   };
 
   const respondInvite = async (inviteId: string, accept: boolean) => {
     if (!user) return;
     await respondGroupEmailInvite(inviteId, accept);
+    await load({ silent: true });
+  };
+
+  const removeGroup = async (groupId: string) => {
+    if (!user) return;
+    await deleteGroup(groupId);
     await load({ silent: true });
   };
 
@@ -114,7 +122,8 @@ export function useGroups() {
     joinPrivate,
     createGroup: createGroupAction,
     leave,
-    sendEmailInvite,
+    sendEmailInvites,
     respondInvite,
+    deleteGroup: removeGroup,
   };
 }

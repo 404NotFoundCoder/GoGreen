@@ -228,7 +228,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 創群時選擇**公開**（任何人可在「公開群組」清單加入）或**私人**（不出現在公開清單；需 **6 碼邀請碼**或**信箱邀請**）
 - `[done]` 邀請碼為 6 碼英數字串，唯一不重複，定義於常數 `INVITE_CODE_LENGTH`（`lib/utils/invite.ts` 產生）
 - `[done]` **信箱邀請**：建立者輸入對方 Google 登入信箱；受邀者在 `/groups` 頂部「待處理的群組邀請」**接受／拒絕**；比對依 **JWT 之 email**（須與受邀信箱一致）。實作：`group_invitations` 表與 RPC `create_group_email_invite`／`list_my_pending_group_invites`／`respond_group_email_invite`（migration `20260321120000_group_email_invitations.sql`）
+- `[done]` **每人僅一個群組**：已加入任一群組時，不可再**建立**、**加入**（公開／邀請碼）或**接受信箱邀請**；須先**退出**。資料庫：`group_members (user_id)` **唯一**（`migration 20260321200000_one_group_per_user.sql`）；RPC `join_public_group`／`join_private_group`／`respond_group_email_invite`（接受時）若已隸屬群組則 `already_in_group`
 - `[done]` **RLS／查詢**：`groups.g_select` 為 `is_public OR created_by = auth.uid() OR EXISTS (…group_members…)`（`migration 20260321160000`）；`group_members` 的 SELECT 僅 **`gm_select`**：`auth.uid() = user_id`。**勿**在遠端同時保留舊名 **`"members read"`**（子查詢 `group_members` 自參照）與 **`gm_select`**，否則仍會 **infinite recursion**（`migration 20260321170000` 刪除舊名）。**`listMyGroups`** 勿使用 PostgREST 嵌套 `group_members(..., groups(...))` 單一請求，改為兩次查詢後合併（見 **v0.10.20**）
+- `[done]` **操作回饋**：群組相關成功／錯誤以 **`ToastProvider`**（`context/ToastContext.tsx`）底部 toast 提示
 - `[未實作]` 創群時設定此群組的公版清單（可從系統預設複製後修改）；目前僅使用系統預設公版範本
 - `[planned]` 群組間排名使用**平均標準化分**（見「排行榜設計 → 群組 vs 群組」；後端 view 可擴充，前端頁 `[planned]`）
 
@@ -469,7 +471,7 @@ Context Provider 掛載順序定義在 `app/layout.tsx`，
 app/              → 路由與 layout，組裝元件，不含邏輯
 components/       → UI 元件，分功能型（可用 context）與純展示型（只接 props）
 hooks/            → 業務邏輯、資料操作、UI 狀態管理（見下「目前檔案」）
-context/          → 跨頁面共享的全域狀態（e.g. AuthContext）
+context/          → 跨頁面共享的全域狀態（e.g. AuthContext、ToastContext）
 lib/supabase/     → Supabase 所有查詢與操作的唯一入口（見下「目前檔案」）
 lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `invite.ts`、`error.ts`、`groupErrors.ts`）
 constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
@@ -623,13 +625,14 @@ create table groups (
   created_at   timestamptz default now()
 );
 
--- 群組成員
+-- 群組成員（每人最多一筆：同一 user_id 僅能隸屬一個群組）
 create table group_members (
   group_id    uuid references groups(id) on delete cascade,
   user_id     uuid references users(id) on delete cascade,
   joined_at   timestamptz default now(),
   primary key (group_id, user_id)
 );
+-- unique index on (user_id) 見 migration 20260321200000 / initial.sql
 
 -- 群組信箱邀請（見 migration 20260321120000_group_email_invitations.sql；受邀 email 小寫 trim 儲存）
 create table group_invitations (
@@ -1254,6 +1257,26 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.25 — 群組 UI：信箱 chips、建立者刪除群組、Toast 置頂
+
+- `[FEAT]` `ToastProvider`：toast 顯示於畫面上方（`fixed top`）
+- `[FEAT]` `EmailChipsInput`：受邀信箱以 chip 輸入，Enter／逗號新增，多筆換行；`GroupHub` 串接並以換行合併送 `createGroupEmailInvites`
+- `[FEAT]` `GroupHub`：群組下拉選單樣式強化；已達「每人僅一群」時「建立群組」「邀請碼加入」可 **收合**：預設僅顯示鎖頭＋說明，點擊展開預覽停用表單
+- `[FEAT]` 建立者於「我的群組」可 **刪除群組**（`DeleteGroupDialog` 須輸入完整群組名）；`lib/supabase/groups.deleteGroup` + `useGroups.deleteGroup`
+- `[DOCS]` 本 Changelog
+
+### [2026-03-21] v0.10.24 — 每人僅一群、Toast、多信箱邀請
+
+- `[FEAT]` `group_members (user_id)` 唯一索引；RPC `already_in_group`；`createGroup` 前檢查；`GroupHub` 區塊與邀請接受／公開加入之限制
+- `[FEAT]` `ToastProvider` + `useToast`；群組成功／錯誤改為 toast
+- `[FEAT]` 信箱邀請：`parseInviteEmails` + `createGroupEmailInvites` 批次；`textarea` 多筆；`select` 樣式（`appearance-none` + `ChevronDown`）
+- `[DOCS]` 系統功能規格「群組」、`context`/`lib/utils`、資料表摘要與本 Changelog
+
+### [2026-03-21] v0.10.23 — 公開群組已加入時顯示「已加入」
+
+- `[FEAT]` `GroupHub`：公開群組列若已在「我的群組」中，改顯示 **已加入**（非「加入」按鈕）
+- `[DOCS]` 本 Changelog
 
 ### [2026-03-21] v0.10.22 — 群組 RLS／查詢與文件對齊
 

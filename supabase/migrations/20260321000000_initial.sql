@@ -79,6 +79,9 @@ create table if not exists public.group_members (
   primary key (group_id, user_id)
 );
 
+create unique index if not exists group_members_one_group_per_user
+  on public.group_members (user_id);
+
 -- ── 每日打卡
 create table if not exists public.daily_checkins (
   id               uuid primary key default gen_random_uuid(),
@@ -342,7 +345,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ── 加入公開群組
+-- ── 加入公開群組（每人僅能隸屬一個群組）
 create or replace function public.join_public_group(p_group_id uuid)
 returns void
 language plpgsql
@@ -350,6 +353,9 @@ security definer
 set search_path = public
 as $$
 begin
+  if exists (select 1 from public.group_members where user_id = auth.uid()) then
+    raise exception 'already_in_group';
+  end if;
   if not exists (
     select 1 from public.groups g
     where g.id = p_group_id and g.is_public = true
@@ -357,14 +363,13 @@ begin
     raise exception 'not_public_or_missing';
   end if;
   insert into public.group_members (group_id, user_id)
-  values (p_group_id, auth.uid())
-  on conflict do nothing;
+  values (p_group_id, auth.uid());
 end;
 $$;
 
 grant execute on function public.join_public_group(uuid) to authenticated;
 
--- ── 以邀請碼加入私人群組
+-- ── 以邀請碼加入私人群組（每人僅能隸屬一個群組）
 create or replace function public.join_private_group(p_code text)
 returns uuid
 language plpgsql
@@ -374,6 +379,9 @@ as $$
 declare
   gid uuid;
 begin
+  if exists (select 1 from public.group_members where user_id = auth.uid()) then
+    raise exception 'already_in_group';
+  end if;
   select id into gid
   from public.groups
   where invite_code = upper(trim(p_code))
@@ -382,8 +390,7 @@ begin
     raise exception 'invalid_invite';
   end if;
   insert into public.group_members (group_id, user_id)
-  values (gid, auth.uid())
-  on conflict do nothing;
+  values (gid, auth.uid());
   return gid;
 end;
 $$;

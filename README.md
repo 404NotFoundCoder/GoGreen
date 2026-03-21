@@ -1,33 +1,35 @@
-# 🌿 GoGreen
+# GoGreen
 
-> 把永續行動變成每天想打開的習慣。
+把永續行動變成每天想打開的習慣。
 
-GoGreen 是一個基於聯合國 17 個 SDG 永續發展目標的每日行動檢核 web app。
-每天完成公版或自訂的永續行動、累積分數、加入群組，和朋友一起為地球做點什麼。
+GoGreen 是以聯合國 17 個 SDG 為核心的每日行動檢核 web app：完成公版或自訂行動、累積分數與連續天數、加入群組並在排行榜上互相激勵。
 
 ---
 
-## 功能
+## 功能（實作狀態）
 
-- **每日檢核** — 完成公版 10 項永續行動，支援打卡照片上傳
-- **自訂行動** — 新增個人永續行為，可標記對應 SDG 目標
-- **Streak 系統** — 連續打卡天數累積獎勵加成
-- **群組** — 建立公開或私人群組，設定專屬公版清單
-- **排行榜** — 全體、群組內、群組 vs 群組，四個維度（總加權 / 分數 / 完成數 / SDG 覆蓋）自由切換
-- **個人記錄** — 打卡日曆、SDG 覆蓋分布、分數趨勢
+| 功能 | 說明 |
+| --- | --- |
+| 今日檢核 | 公版清單勾選、自訂行動（含 SDG、收藏）、連續天數與每日統計 |
+| Google 登入 | Supabase Auth OAuth，登入後同步 `users` 暱稱 |
+| 個人資料 | 修改暱稱 |
+| 群組 | 建立公開／私人（邀請碼）、加入公開群組、邀請碼加入私人、退出 |
+| 全體排行榜 | 本週／本月／累計 × 四維度（總加權／分數／完成數／SDG 覆蓋），Realtime 訂閱 `user_daily_stats` |
+| PWA | `next-pwa` + `manifest.json`（正式建置使用 `npm run build --webpack`） |
+
+其餘規格（群組內榜、群組 vs 群組、個人記錄圖表、打卡照片 Storage、推播 Edge Function 等）見 [INSTRUCTIONS.md](./INSTRUCTIONS.md) 中 `[planned]`／`[tbd]` 標記。
 
 ---
 
 ## 技術棧
 
-| 層級          | 工具                          |
-| ------------- | ----------------------------- |
-| 框架          | Next.js 14（App Router）      |
-| 資料庫 / 認證 | Supabase（PostgreSQL + Auth） |
-| 樣式          | Tailwind CSS                  |
-| 狀態管理      | React Context + custom hooks  |
-| 儲存          | Supabase Storage              |
-| 部署          | Vercel                        |
+| 層級 | 工具 |
+| --- | --- |
+| 框架 | Next.js 16（App Router） |
+| 資料庫／認證 | Supabase（PostgreSQL + Auth） |
+| 樣式 | Tailwind CSS 4 |
+| 狀態 | React Context + hooks |
+| PWA | @ducanh2912/next-pwa |
 
 ---
 
@@ -39,70 +41,68 @@ GoGreen 是一個基於聯合國 17 個 SDG 永續發展目標的每日行動檢
 npm install
 ```
 
-### 2. 設定環境變數
-
-複製範本並填入你的 Supabase 金鑰：
+### 2. 環境變數
 
 ```bash
 cp .env.example .env.local
 ```
 
-```bash
-# .env.local
-NEXT_PUBLIC_SUPABASE_URL=        # Supabase 專案 URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=   # Supabase anon key
-```
+在 `.env.local` 填入 Supabase 專案的 `NEXT_PUBLIC_SUPABASE_URL` 與 `NEXT_PUBLIC_SUPABASE_ANON_KEY`（Dashboard → Settings → API）。
 
-> 金鑰在 Supabase 後台 → Settings → API 取得。
+### 3. 資料庫
 
-### 3. 初始化資料庫
+在 Supabase **SQL Editor** 執行：
 
-在 Supabase SQL Editor 依序執行：
+`supabase/migrations/20260321000000_initial.sql`
 
-1. `supabase/migrations/001_create_tables.sql` — 建立資料表
-2. `supabase/migrations/002_rls.sql` — 設定 Row Level Security
-3. `supabase/migrations/003_views.sql` — 建立排行榜 View
-4. `supabase/seed.sql` — 寫入 SDG 資料與預設公版清單
+完成後於 **Database → Replication**（或 SQL）將 `daily_checkins`、`user_daily_stats` 納入 Realtime publication（語句見 INSTRUCTIONS.md「Realtime 規範」）。
 
-### 4. 啟動開發伺服器
+在 **Authentication → Providers** 啟用 **Google**，並將 Redirect URL 設為：
+
+`https://<你的專案>.supabase.co/auth/v1/callback`（Supabase 預設）以及本機 `http://localhost:3000/auth/callback`（若使用本地開發）。
+
+### 4. 啟動
 
 ```bash
 npm run dev
 ```
 
-開啟 [http://localhost:3000](http://localhost:3000)
+瀏覽 [http://localhost:3000](http://localhost:3000)。
+
+### 5. 正式建置
+
+Next.js 16 預設使用 **Turbopack** 建置，但 `@ducanh2912/next-pwa` 會注入 **webpack** 設定，若直接執行 `next build`（沒加 `--webpack`）會失敗。
+
+請務必使用腳本（已內含 `--webpack`）：
+
+```bash
+npm run build
+# 或
+yarn build
+```
+
+**請勿**執行 `npx next build` 或 `yarn next build`（除非自行加上 `--webpack`）。
+
+若終端機出現「multiple lockfiles」警告：你在家目錄 `C:\Users\User\` 另有 `package-lock.json` 時，Next 可能誤判根目錄；本專案已在 `next.config.ts` 設定 `outputFileTracingRoot` / `turbopack.root` 鎖定本 repo。若仍異常，可將家目錄多餘的 lockfile 移開或刪除（確認不是其他專案需要後再動）。
+
+若出現 **`Can't resolve 'tailwindcss' in 'C:\...\Desktop'`**：同樣是根目錄誤判。請在 **go-green 資料夾內** 執行 `npm run dev`（已使用 `--webpack`），並確認 `next.config.ts` 內 `turbopack.resolveAlias` 已存在；根本解法仍是避免在 `C:\Users\User\` 放與本專案無關的 `package-lock.json`。
 
 ---
 
 ## 專案結構
 
 ```
-gogreen/
-├── app/              # Next.js App Router 頁面
-├── components/       # UI 元件
-├── hooks/            # Custom hooks（業務邏輯）
-├── context/          # React Context
-├── lib/supabase/     # Supabase 查詢封裝
-├── lib/utils/        # 純函式工具
-├── constants/        # 全域常數
-├── types/            # TypeScript 型別
-└── supabase/         # Migration & seed SQL
+app/                 # 路由與 layout（頁面僅組裝）
+components/          # UI 與功能區塊
+context/             # Auth 等跨頁狀態
+hooks/               # 業務邏輯與資料載入
+lib/supabase/        # Supabase 唯一操作入口
+lib/utils/           # 純函式（日期、排行榜加權等）
+constants/           # 常數與 SDG 定義
+supabase/migrations/ # SQL migration
 ```
 
-詳細架構說明、資料表設計、分數系統請見 [INSTRUCTIONS.md](./INSTRUCTIONS.md)。
-
----
-
-## 開發規範
-
-請在開始開發前閱讀 [INSTRUCTIONS.md](./INSTRUCTIONS.md)，內含：
-
-- 架構原則與分層職責
-- 分數系統與排行榜設計說明
-- Supabase 資料表結構與 RLS
-- 設計系統與色盤
-- Commit 訊息規範
-- Changelog
+完整規範見 [INSTRUCTIONS.md](./INSTRUCTIONS.md)。
 
 ---
 

@@ -161,7 +161,7 @@ SDG tag 沿用聯合國官方配色，定義在 `constants/sdg.ts`，不套用�
 
 ## 系統功能規格
 
-### 主畫面 — 今日檢核 `[planned]`
+### 主畫面 — 今日檢核 `[done]`
 
 - 顯示當日公版行動清單（每個群組的公版清單可能不同）
 - 每項可 toggle 勾選，搭配遊戲感動畫（彈跳 + 植物/葉片生長視覺效果）
@@ -192,21 +192,21 @@ SDG tag 沿用聯合國官方配色，定義在 `constants/sdg.ts`，不套用�
 | `is_active`   | boolean | 是否顯示在今日清單                   |
 | `order`       | int     | 排序                                 |
 
-### 群組 `[planned]`
+### 群組 `[done]`
 
 - 創群時選擇**公開**（任何人可搜尋加入）或**私人**（需邀請碼）
 - 邀請碼為 6 碼英數字串，唯一不重複，定義於常數 `INVITE_CODE_LENGTH`
 - 創群時設定此群組的公版清單（可從系統預設複製後修改）
 - 群組間排名使用**平均標準化分**，避免人多群組佔優
 
-### 認證與使用者 `[planned]`
+### 認證與使用者 `[done]`
 
 - 透過 Google 登入（Supabase Auth）
 - 登入後預設使用 Google 顯示名稱作為暱稱
 - 使用者可在 profile 頁修改暱稱（不強制，降低登入摩擦）
 - 暱稱修改後同步更新至排行榜
 
-### 自訂行動 `[planned]`
+### 自訂行動 `[done]`
 
 - 使用者可新增個人「永續行為」
 - 可標記對應 SDGs（多選），**自訂 SDG 計入 SDG 覆蓋排名**
@@ -292,8 +292,9 @@ SDG tag 沿用聯合國官方配色，定義在 `constants/sdg.ts`，不套用�
 
 - 所有使用者公開姓名，無隱私選項
 - 顯示前 `LEADERBOARD_LIMIT` 名
-- 統計面板：參與人數、全體行動次數、本週最熱門行動、SDG 全覆蓋狀況
-- 圖表：全體 SDG 行動分布（長條圖）、每日完成項次趨勢（折線圖）
+- **前端**：`/leaderboard` 已實作本週／本月／累計與四個子 tab（總加權／分數／完成數／SDG 覆蓋），並訂閱 Realtime `user_daily_stats`
+- 統計面板：參與人數、全體行動次數、本週最熱門行動、SDG 全覆蓋狀況 `[planned]`
+- 圖表：全體 SDG 行動分布（長條圖）、每日完成項次趨勢（折線圖）`[planned]`
 
 ### 群組內排行榜
 
@@ -596,6 +597,14 @@ create table daily_checkins (
     ),
   unique (user_id, date, item_id),
   unique (user_id, date, custom_item_id)
+);
+
+-- 今日加入清單的自訂項目（用於計算當日 total_items）
+create table user_daily_custom_items (
+  user_id        uuid references users(id) on delete cascade,
+  date           date not null,
+  custom_item_id uuid references custom_items(id) on delete cascade,
+  primary key (user_id, date, custom_item_id)
 );
 
 -- 使用者每日統計（冗餘存儲，加速排行榜查詢）
@@ -1173,6 +1182,17 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.9.0 — 核心 App 實作（MVP）
+
+- `[FEAT]` 今日檢核：公版項目勾選、自訂行動（今日加入、SDG 多選、可選收藏）、完成動畫與全部完成 confetti（尊重 `prefers-reduced-motion`）
+- `[FEAT]` Google 登入、`/auth/callback`、middleware 保護 `/today`、`/leaderboard`、`/groups`、`/profile`
+- `[FEAT]` 全體排行榜：期間（週／月／累計）× 維度（總加權／分數／完成數／SDG 覆蓋）、Realtime 訂閱 `user_daily_stats`
+- `[FEAT]` 群組：建立公開／私人（6 碼邀請碼）、加入／退出、RPC `join_public_group`／`join_private_group`
+- `[DB]` 新增 `user_daily_custom_items`、觸發器更新 `user_daily_stats`、補充 `group_members` 建立者可加入自己群組之 RLS policy
+- `[ARCH]` 分層：`lib/supabase/*`、`hooks/*`、`context/AuthContext`、`AppShell`（手機底欄／桌面側欄）
+- `[ARCH]` PWA：`@ducanh2912/next-pwa`；`npm run build` 使用 `--webpack` 以相容 Next 16 預設 Turbopack
+- `[DOCS]` 更新 README、本文件功能狀態標記與 Changelog
 
 ### [2026-03-21] v0.8.0 — UI/UX 與多裝置規範
 

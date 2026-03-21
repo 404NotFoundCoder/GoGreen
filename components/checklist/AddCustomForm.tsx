@@ -71,7 +71,7 @@ export function AddCustomForm({ onSubmit, disabled }: Props) {
                   on ? "ring-2 ring-[var(--color-primary-dark)]" : "opacity-80",
                 ].join(" ")}
               >
-                <SdgTag id={s.id} />
+                <SdgTag id={s.id} showLabel />
               </button>
             );
           })}

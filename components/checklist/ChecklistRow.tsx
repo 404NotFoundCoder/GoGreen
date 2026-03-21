@@ -8,9 +8,16 @@ type Props = {
   done: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  sdgShowLabel?: boolean;
 };
 
-export function ChecklistRow({ item, done, onToggle, disabled }: Props) {
+export function ChecklistRow({
+  item,
+  done,
+  onToggle,
+  disabled,
+  sdgShowLabel,
+}: Props) {
   return (
     <ChecklistStampCard
       done={done}
@@ -19,6 +26,7 @@ export function ChecklistRow({ item, done, onToggle, disabled }: Props) {
       title={item.title}
       description={item.description}
       sdgIds={item.sdg_ids ?? undefined}
+      sdgShowLabel={sdgShowLabel}
     />
   );
 }

@@ -158,7 +158,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### SDG Tag 顏色
 
-SDG tag 沿用聯合國官方配色，定義在 `constants/sdg.ts`，不套用主色系。
+**單一來源（前端）：** 畫面上所有 SDG 標籤配色與文案以 **`constants/sdg.ts` 的 `SDG_COLORS`** 為準——背景為聯合國官方色加上 8 位 hex 透明度（`…18` 約 10%），`text` 為對應深色，`label` 為簡短中文。`components/ui/SdgTag.tsx` 預設僅顯示 `SDG N`，傳 **`showLabel`** 可一併顯示中文；`ChecklistStampCard`／`ChecklistRow` 可傳 **`sdgShowLabel`**（預設 `true`）。不套用主色系。
+
+**為什麼資料庫還有 `public.sdgs`？** 目前 **沒有任何 Next.js 程式碼** 向 Supabase 讀取 `sdgs` 來渲染 UI；清單與打卡只存 `sdg_ids`（整數陣列）。表中的 `label`／`color`／`text_color` 是早期 schema／seed 預留，方便在 **SQL、報表、未來後台** 用同一套語意對照；與常數並存會造成「兩份要維護」的負擔。原則：**要改標籤外觀只改 `constants/sdg.ts`**；若希望 DB 與部署後台一致，再手動跑 migration 或之後改為「只從 API 讀 `sdgs`、刪掉常數」擇一即可。
 
 ---
 
@@ -457,7 +459,7 @@ types/            → TypeScript 型別定義
 - `constants/config.ts` — App 層級設定
 - `constants/scoring.ts` — 所有分數與 streak 相關常數
 - `constants/checklist.ts` — 系統預設公版清單資料（用於 seed）
-- `constants/sdg.ts` — SDG 目標定義（編號、標籤、顏色）
+- `constants/sdg.ts` — `SDG_COLORS`／`SDG_DEFINITIONS`／`getSdgById`（編號、半透明底、文字色、中文標籤）
 
 命名使用 `SCREAMING_SNAKE_CASE`，並加行內註解：
 
@@ -527,12 +529,12 @@ create table users (
   created_at  timestamptz default now()
 );
 
--- SDG 目標（seed 資料，不由 client 寫入）
+-- SDG 目標（seed 資料，不由 client 寫入；配色與 `constants/sdg.ts` 之 SDG_COLORS 同步）
 create table sdgs (
   id          int primary key,    -- 1–17
-  label       text not null,      -- e.g. '消除飢餓'
-  color       text not null,      -- hex color
-  text_color  text not null       -- hex，用於文字顯示
+  label       text not null,      -- 簡短中文（與前端標籤一致）
+  color       text not null,      -- 標籤底色（官方色 + 8 位 hex 透明度，約 10%）
+  text_color  text not null       -- 標籤文字色（深色）
 );
 
 -- 公版清單範本
@@ -1191,6 +1193,16 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.6 — 資料庫 sdgs 與前端 SDG_COLORS 對齊
+
+- `[DB]` `public.sdgs` 之 `color`／`text_color`／`label` 改為與 `constants/sdg.ts` 一致（半透明底 + 深色字）；新增 migration `20260321120000_sdgs_tag_colors.sql`；初始 seed 同步
+- `[DOCS]` 資料庫規範 `sdgs` 欄位說明
+
+### [2026-03-21] v0.10.5 — SDG 標籤配色與顯示模式
+
+- `[FEAT]` `SDG_COLORS`（半透明底＋深色字＋`label`）；`SdgTag` 支援 `showLabel`；`ChecklistStampCard`／`ChecklistRow` 支援 `sdgShowLabel`
+- `[DOCS]` 「SDG Tag 顏色」與本 Changelog
 
 ### [2026-03-21] v0.10.4 — 全完成慶祝僅限當次操作打滿
 

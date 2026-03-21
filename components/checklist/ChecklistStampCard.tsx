@@ -75,6 +75,8 @@ type Props = {
   description?: string | null;
   metaLine?: ReactNode;
   sdgIds?: number[];
+  /** SDG 標籤是否顯示中文標籤（預設顯示） */
+  sdgShowLabel?: boolean;
 };
 
 export function ChecklistStampCard({
@@ -85,6 +87,7 @@ export function ChecklistStampCard({
   description,
   metaLine,
   sdgIds,
+  sdgShowLabel = true,
 }: Props) {
   const cardRef = useRef<HTMLButtonElement>(null);
   const stampZoneRef = useRef<HTMLSpanElement>(null);
@@ -186,7 +189,7 @@ export function ChecklistStampCard({
       {sdgIds?.length ? (
         <div className="mt-[5px] flex flex-wrap gap-1 pl-14">
           {sdgIds.map((id) => (
-            <SdgTag key={id} id={id} />
+            <SdgTag key={id} id={id} showLabel={sdgShowLabel} />
           ))}
         </div>
       ) : null}

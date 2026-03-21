@@ -14,8 +14,8 @@ create table if not exists public.users (
 create table if not exists public.sdgs (
   id          int primary key,
   label       text not null,
-  color       text not null,
-  text_color  text not null
+  color       text not null,   -- 標籤底色：官方色 + 8 位 hex 透明度（…18 ≈ 10%）
+  text_color  text not null    -- 標籤文字色（深色，確保對比）
 );
 
 -- ── 公版清單範本
@@ -505,25 +505,25 @@ create policy ps_select on public.push_subscriptions for select using (auth.uid(
 create policy ps_insert on public.push_subscriptions for insert with check (auth.uid() = user_id);
 create policy ps_delete on public.push_subscriptions for delete using (auth.uid() = user_id);
 
--- ── Seed：SDG（精簡標籤，完整可再補）
+-- ── Seed：SDG（與 constants/sdg.ts 之 SDG_COLORS 一致；color 為半透明底、text_color 為深色字）
 insert into public.sdgs (id, label, color, text_color) values
-  (1, '消除貧窮', '#E5243B', '#ffffff'),
-  (2, '消除飢餓', '#DDA63A', '#1a1a1a'),
-  (3, '健康與福祉', '#4C9F38', '#ffffff'),
-  (4, '優質教育', '#C5192D', '#ffffff'),
-  (5, '性別平等', '#FF3A21', '#ffffff'),
-  (6, '淨水與衛生', '#26BDE2', '#1a1a1a'),
-  (7, '可負擔的潔淨能源', '#FCC30B', '#1a1a1a'),
-  (8, '尊嚴就業與經濟發展', '#A21942', '#ffffff'),
-  (9, '產業創新與基礎建設', '#FD6925', '#ffffff'),
-  (10, '減少不平等', '#DD1367', '#ffffff'),
-  (11, '永續城市與社區', '#FD9D24', '#1a1a1a'),
-  (12, '負責任的消費與生產', '#BF8B2E', '#ffffff'),
-  (13, '氣候行動', '#3F7E44', '#ffffff'),
-  (14, '保育海洋生態', '#0A97D9', '#ffffff'),
-  (15, '保育陸域生態', '#56C02B', '#1a1a1a'),
-  (16, '和平正義與健全制度', '#00689D', '#ffffff'),
-  (17, '全球夥伴', '#19486A', '#ffffff')
+  (1, '消除貧窮', '#E5243B18', '#8b0012'),
+  (2, '消除飢餓', '#DDA63A18', '#7a4f00'),
+  (3, '健康與福祉', '#4C9F3818', '#1e5015'),
+  (4, '優質教育', '#C5192D18', '#7a0010'),
+  (5, '性別平等', '#FF3A2118', '#991500'),
+  (6, '淨水及衛生', '#26BDE218', '#084d6d'),
+  (7, '潔淨能源', '#FCC30B18', '#6b4e00'),
+  (8, '尊嚴就業', '#A2194218', '#5c0020'),
+  (9, '產業創新', '#FD692518', '#8b3000'),
+  (10, '減少不平等', '#DD136718', '#7a0035'),
+  (11, '永續城鄉', '#FD9D2418', '#7a3d00'),
+  (12, '責任消費', '#BF8B2E18', '#5c3a00'),
+  (13, '氣候行動', '#3F7E4418', '#1a3d1e'),
+  (14, '保育海洋', '#0A97D918', '#084d6d'),
+  (15, '保育陸域', '#56C02B18', '#265c0a'),
+  (16, '和平正義', '#00689D18', '#003d5c'),
+  (17, '全球夥伴', '#19486A18', '#0d2a40')
 on conflict (id) do nothing;
 
 -- ── 系統預設公版 + 範例項目（constants/checklist.ts 可同步）

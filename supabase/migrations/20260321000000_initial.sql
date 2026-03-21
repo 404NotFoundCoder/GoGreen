@@ -480,15 +480,23 @@ create policy uds_update on public.user_daily_stats for update using (auth.uid()
 
 alter table public.groups enable row level security;
 create policy g_select on public.groups for select using (
-  is_public = true or id in (select group_id from public.group_members where user_id = auth.uid())
+  is_public = true
+  or created_by = auth.uid()
+  or exists (
+    select 1
+    from public.group_members gm
+    where gm.group_id = groups.id
+      and gm.user_id = auth.uid()
+  )
 );
 create policy g_insert on public.groups for insert with check (auth.uid() = created_by);
 create policy g_update on public.groups for update using (auth.uid() = created_by) with check (auth.uid() = created_by);
 create policy g_delete on public.groups for delete using (auth.uid() = created_by);
 
 alter table public.group_members enable row level security;
+-- 僅讀本人列；勿在此政策呼叫 user_is_member_of_group(group_id)，否則評估他人列時會遞迴
 create policy gm_select on public.group_members for select using (
-  group_id in (select group_id from public.group_members where user_id = auth.uid())
+  auth.uid() = user_id
 );
 create policy gm_join_public on public.group_members for insert with check (
   auth.uid() = user_id

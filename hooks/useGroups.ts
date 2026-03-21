@@ -2,13 +2,18 @@
 
 import {
   createGroup,
+  createGroupEmailInvite,
   joinPrivateGroupRpc,
   joinPublicGroupRpc,
   leaveGroup,
   listMyGroups,
+  listPendingGroupInvites,
   listPublicGroups,
+  respondGroupEmailInvite,
+  type PendingGroupInviteRow,
 } from "@/lib/supabase/groups";
 import { useAuthContext } from "@/context/AuthContext";
+import { toErrorMessage } from "@/lib/utils/error";
 import { useCallback, useEffect, useState } from "react";
 
 export function useGroups() {
@@ -19,6 +24,9 @@ export function useGroups() {
   const [publicList, setPublicList] = useState<
     Awaited<ReturnType<typeof listPublicGroups>>
   >([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingGroupInviteRow[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -31,14 +39,16 @@ export function useGroups() {
       if (!opts?.silent) setLoading(true);
       setError(null);
       try {
-        const [m, p] = await Promise.all([
+        const [m, p, invites] = await Promise.all([
           listMyGroups(user.id),
           listPublicGroups(),
+          listPendingGroupInvites().catch(() => [] as PendingGroupInviteRow[]),
         ]);
         setMine(m);
         setPublicList(p);
+        setPendingInvites(invites);
       } catch (e) {
-        setError(e instanceof Error ? e : new Error(String(e)));
+        setError(new Error(toErrorMessage(e)));
       } finally {
         if (!opts?.silent) setLoading(false);
       }
@@ -80,9 +90,23 @@ export function useGroups() {
     await load({ silent: true });
   };
 
+  const sendEmailInvite = async (groupId: string, email: string) => {
+    if (!user) return;
+    await createGroupEmailInvite(groupId, email.trim());
+    await load({ silent: true });
+  };
+
+  const respondInvite = async (inviteId: string, accept: boolean) => {
+    if (!user) return;
+    await respondGroupEmailInvite(inviteId, accept);
+    await load({ silent: true });
+  };
+
   return {
     mine,
     publicList,
+    pendingInvites,
+    userId: user?.id ?? null,
     loading: loading || authLoading,
     error,
     refetch: load,
@@ -90,5 +114,7 @@ export function useGroups() {
     joinPrivate,
     createGroup: createGroupAction,
     leave,
+    sendEmailInvite,
+    respondInvite,
   };
 }

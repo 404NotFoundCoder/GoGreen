@@ -47,15 +47,15 @@
 
 ## 技術棧選擇與理由
 
-| 層級          | 工具                                                                 |
-| ------------- | -------------------------------------------------------------------- |
+| 層級          | 工具                                                                         |
+| ------------- | ---------------------------------------------------------------------------- |
 | 框架          | Next.js 16（App Router）；生產建置使用 `next build --webpack`（與 PWA 相容） |
-| UI            | React 19、Tailwind CSS 4                                            |
-| 資料庫 / 認證 | Supabase（PostgreSQL + Auth）                                        |
-| 狀態管理      | React Context + `hooks/`                                            |
-| PWA           | `@ducanh2912/next-pwa`（見 [PWA 規範](#pwa-規範)）                     |
-| 儲存          | Supabase Storage（`checkin-photos`；已完成項目可上傳／檢視佐證 `[done]`） |
-| 部署          | Vercel（建議）                                                       |
+| UI            | React 19、Tailwind CSS 4                                                     |
+| 資料庫 / 認證 | Supabase（PostgreSQL + Auth）                                                |
+| 狀態管理      | React Context + `hooks/`                                                     |
+| PWA           | `@ducanh2912/next-pwa`（見 [PWA 規範](#pwa-規範)）                           |
+| 儲存          | Supabase Storage（`checkin-photos`；已完成項目可上傳／檢視佐證 `[done]`）    |
+| 部署          | Vercel（建議）                                                               |
 
 ### 為什麼選 Supabase 而非 Firebase
 
@@ -168,15 +168,15 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ## 路由與登入保護（已實作）
 
-| 路徑 | 說明 |
-| ---- | ---- |
-| `/` | 首頁（未登入；玩法說明、Google 開始 CTA） |
-| `/login` | 登入頁（Google） |
-| `/auth/callback` | Supabase OAuth callback |
-| `/today` | 今日檢核（需登入） |
-| `/leaderboard` | 全體排行榜（需登入） |
-| `/groups` | 群組（需登入） |
-| `/profile` | 個人／暱稱（需登入） |
+| 路徑             | 說明                                      |
+| ---------------- | ----------------------------------------- |
+| `/`              | 首頁（未登入；玩法說明、Google 開始 CTA） |
+| `/login`         | 登入頁（Google）                          |
+| `/auth/callback` | Supabase OAuth callback                   |
+| `/today`         | 今日檢核（需登入）                        |
+| `/leaderboard`   | 全體排行榜（需登入）                      |
+| `/groups`        | 群組（需登入）                            |
+| `/profile`       | 個人／暱稱（需登入）                      |
 
 **登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 `redirect('/login')`。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
 
@@ -196,7 +196,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 完成約一半時頂部**深色膠囊** toast 滑入「🌱 已完成一半！繼續加油」（約 2.5s 後收起）；**全部完成**時：約 **280ms** 後以 **DOM 彩帶**（`confettiFall`，約 60 片）→ 約 **850ms** 後全螢幕慶祝 overlay（`rgba(233,245,219,0.95)`、**`Leaf` 圖示**、`fadeIn`／`bounceIn`／`slideUp`）；overlay 顯示後 **1500ms** 自動關閉，亦可按「太棒了」提前關閉；`prefers-reduced-motion: reduce` 時略過彩帶、直接顯示 overlay；**全完成慶祝（撒花＋overlay）僅在使用者本次勾選／取消後再勾選，剛好由「未全滿」變成「全滿」且 API 成功時觸發**（`fullCompletionCelebrationTick`）；**初次載入若已全完成**則不播放慶祝動畫，僅顯示清單下方「今日全部完成」內聯提示
 - `[done]` 頂部統計：進度條軌 `#CFD5BD`、填色 `#87986A`、高度 6px、`width` 過渡 **0.4s** `cubic-bezier(0.34, 1.56, 0.64, 1)`；今日得分數字 bump 動畫；連續天數 tier 徽章底色 `#FAEEDA`、字色 `#854F0B`
 - `[done]` 已完成項目可上傳佐證照片（檔案選擇）至 Storage，並寫入 `daily_checkins.photo_url`；可點縮圖或「檢視大圖」以 **`ImageLightbox`** 全螢幕瀏覽（Esc／點背景關閉）
-- `[未實作]` 拖曳上傳佐證檔案（目前僅檔案選擇）
+- `[tbd]` 拖曳上傳佐證檔案（目前僅檔案選擇）
 - `[done]` **自訂行動與常用收藏**為**單一卡片**（`#gg-custom-favorites-section`）：頂部標題列說明 → 上段「新增項目」（`AddCustomForm` `embedded`）→ 分隔線 → 下段「常用收藏」（`FavoritesPanel` `embedded`、背景略區隔）；避免兩張獨立全寬卡片重複邊框
 - `[done]` 每日午夜重置（時區：UTC+8），重置時間定義為常數 `DAILY_RESET_HOUR`
 
@@ -225,8 +225,10 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### 群組 `部分完成`
 
-- `[done]` 創群時選擇**公開**（任何人可搜尋加入）或**私人**（需邀請碼）
-- `[done]` 邀請碼為 6 碼英數字串，唯一不重複，定義於常數 `INVITE_CODE_LENGTH`
+- `[done]` 創群時選擇**公開**（任何人可在「公開群組」清單加入）或**私人**（不出現在公開清單；需 **6 碼邀請碼**或**信箱邀請**）
+- `[done]` 邀請碼為 6 碼英數字串，唯一不重複，定義於常數 `INVITE_CODE_LENGTH`（`lib/utils/invite.ts` 產生）
+- `[done]` **信箱邀請**：建立者輸入對方 Google 登入信箱；受邀者在 `/groups` 頂部「待處理的群組邀請」**接受／拒絕**；比對依 **JWT 之 email**（須與受邀信箱一致）。實作：`group_invitations` 表與 RPC `create_group_email_invite`／`list_my_pending_group_invites`／`respond_group_email_invite`（migration `20260321120000_group_email_invitations.sql`）
+- `[done]` **RLS／查詢**：`groups.g_select` 為 `is_public OR created_by = auth.uid() OR EXISTS (…group_members…)`（`migration 20260321160000`）；`group_members` 的 SELECT 僅 **`gm_select`**：`auth.uid() = user_id`。**勿**在遠端同時保留舊名 **`"members read"`**（子查詢 `group_members` 自參照）與 **`gm_select`**，否則仍會 **infinite recursion**（`migration 20260321170000` 刪除舊名）。**`listMyGroups`** 勿使用 PostgREST 嵌套 `group_members(..., groups(...))` 單一請求，改為兩次查詢後合併（見 **v0.10.20**）
 - `[未實作]` 創群時設定此群組的公版清單（可從系統預設複製後修改）；目前僅使用系統預設公版範本
 - `[planned]` 群組間排名使用**平均標準化分**（見「排行榜設計 → 群組 vs 群組」；後端 view 可擴充，前端頁 `[planned]`）
 
@@ -469,7 +471,7 @@ components/       → UI 元件，分功能型（可用 context）與純展示�
 hooks/            → 業務邏輯、資料操作、UI 狀態管理（見下「目前檔案」）
 context/          → 跨頁面共享的全域狀態（e.g. AuthContext）
 lib/supabase/     → Supabase 所有查詢與操作的唯一入口（見下「目前檔案」）
-lib/utils/        → 純函式工具（不依賴 Supabase 或 React，e.g. 日期）
+lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `invite.ts`、`error.ts`、`groupErrors.ts`）
 constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
 ```
 
@@ -629,6 +631,17 @@ create table group_members (
   primary key (group_id, user_id)
 );
 
+-- 群組信箱邀請（見 migration 20260321120000_group_email_invitations.sql；受邀 email 小寫 trim 儲存）
+create table group_invitations (
+  id            uuid primary key default gen_random_uuid(),
+  group_id      uuid not null references groups(id) on delete cascade,
+  invited_email text not null,
+  invited_by    uuid not null references users(id) on delete cascade,
+  status        text not null check (status in ('pending','accepted','declined','cancelled')),
+  created_at    timestamptz default now()
+);
+-- 同一群組、同一信箱僅能有一筆 pending（partial unique index）
+
 -- 每日打卡紀錄
 create table daily_checkins (
   id               uuid primary key default gen_random_uuid(),
@@ -742,24 +755,33 @@ create policy "public read" on user_daily_stats for select using (true);
 create policy "self insert" on user_daily_stats for insert with check (auth.uid() = user_id);
 create policy "self update" on user_daily_stats for update using (auth.uid() = user_id);
 
--- groups：公開群組任何人可讀，私人群組只有成員可讀
+-- groups：公開／建立者可讀／成員可讀（勿用會再查 group_members 的函式於 gm_select；勿在 gm_select 政策內自參照）
 alter table groups enable row level security;
 create policy "public groups readable" on groups for select
-  using (is_public = true or id in (
-    select group_id from group_members where user_id = auth.uid()
-  ));
+  using (
+    is_public = true
+    or created_by = auth.uid()
+    or exists (
+      select 1 from group_members gm
+      where gm.group_id = groups.id and gm.user_id = auth.uid()
+    )
+  );
 create policy "creator insert" on groups for insert with check (auth.uid() = created_by);
 create policy "creator update" on groups for update using (auth.uid() = created_by);
 create policy "creator delete" on groups for delete using (auth.uid() = created_by);
 
--- group_members：群組成員可讀，本人可寫自己的記錄
+-- group_members：SELECT 僅 policy 名稱 gm_select（勿另建舊名 "members read" 子查詢自參照）
 alter table group_members enable row level security;
-create policy "members read" on group_members for select
-  using (group_id in (
-    select group_id from group_members where user_id = auth.uid()
-  ));
-create policy "self insert" on group_members for insert with check (auth.uid() = user_id);
-create policy "self delete" on group_members for delete using (auth.uid() = user_id);
+create policy gm_select on group_members for select using (auth.uid() = user_id);
+create policy gm_join_public on group_members for insert with check (
+  auth.uid() = user_id
+  and exists (select 1 from groups g where g.id = group_id and g.is_public = true)
+);
+create policy gm_creator_insert on group_members for insert with check (
+  auth.uid() = user_id
+  and exists (select 1 from groups g where g.id = group_id and g.created_by = auth.uid())
+);
+create policy gm_delete_self on group_members for delete using (auth.uid() = user_id);
 
 -- checklist_items：任何人可讀，只有 template 創建者可寫
 alter table checklist_items enable row level security;
@@ -1045,12 +1067,12 @@ Tailwind 預設斷點，統一使用，不自訂：
 
 ### Layout 行為
 
-| 頁面 / 元件 | 手機         | 平板             | 桌面                                      |
-| ----------- | ------------ | ---------------- | ----------------------------------------- |
-| 主導航      | 底部 tab bar | 底部 tab bar     | 左側 sidebar                              |
-| 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]`   |
-| 排行榜      | 全寬列表     | 全寬列表         | 全寬列表（側邊圖表為目標 `[planned]`）     |
-| 統計圖表    | 全寬         | 全寬             | 並排顯示 `[planned]`                      |
+| 頁面 / 元件 | 手機                                                                             | 平板             | 桌面                                     |
+| ----------- | -------------------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
+| 主導航      | 底部 tab bar                                                                     | 底部 tab bar     | 左側 sidebar                             |
+| 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]` |
+| 排行榜      | 全寬列表                                                                         | 全寬列表         | 全寬列表（側邊圖表為目標 `[planned]`）   |
+| 統計圖表    | 全寬                                                                             | 全寬             | 並排顯示 `[planned]`                     |
 
 ### 觸控規範（手機 / 平板）
 
@@ -1232,6 +1254,49 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.22 — 群組 RLS／查詢與文件對齊
+
+- `[DOCS]` 系統功能規格「群組」、`lib/utils` 說明、**RLS 範例**（`group_members` 政策名與 `gm_join_public`／`gm_creator_insert` 與 `initial.sql` 一致；註明勿與舊 `"members read"` 並存）
+- `[DOCS]` 本 Changelog
+
+### [2026-03-21] v0.10.21 — 移除舊名 "members read" 與 gm_select 並存
+
+- `[FIX]` `[DB]` migration `20260321170000`：`drop policy "members read" on group_members`。舊政策為 `group_id IN (SELECT … FROM group_members …)`，與 **`gm_select`** 並存時仍會觸發 **infinite recursion**（與是否已改 listMyGroups 無關）
+- `[DOCS]` `supabase/diagnostics/check_group_rls.sql` 註解
+
+### [2026-03-21] v0.10.20 — listMyGroups 拆成兩次查詢（避免 PostgREST 嵌套 RLS 重入）
+
+- `[FIX]` `listMyGroups`：**不再**使用 `group_members` 嵌套 `groups` 單一 select；改為先查 `group_members` 再 `groups.in('id', …)` 合併。否則同一請求內會先評估 `gm_select`、再評估 `groups.g_select`（含 `EXISTS` 查 `group_members`），PostgreSQL 會視為對 `group_members` 政策的 **infinite recursion**（與函式是否已刪除無關）
+- `[DOCS]` 本 Changelog
+
+### [2026-03-21] v0.10.19 — groups 政策不再使用 user_is_member_of_group 函式
+
+- `[FIX]` `[DB]` **`groups.g_select`** 改為 `is_public OR created_by = auth.uid() OR EXISTS (…group_members…)`，**刪除** `user_is_member_of_group()`（巢狀查詢／PostgREST embed 時函式內再查 `group_members` 仍可能觸發 **infinite recursion**）。**`created_by`** 確保創私人群後、尚未寫入成員列前仍能讀到群組。migration：`20260321160000_groups_policy_no_function.sql`
+- `[DOCS]` RLS 範例與本 Changelog
+
+### [2026-03-21] v0.10.18 — gm_select 僅本人列（終止遞迴）
+
+- `[FIX]` `[DB]` **`gm_select`** 改為**僅** `auth.uid() = user_id`，**移除** `OR user_is_member_of_group(group_id)`（評估他人列時仍會進入函式再查 `group_members` → 遞迴）。是否為成員改由 **`groups.g_select`** 使用 `user_is_member_of_group(id)`；函式內 EXISTS 只命中自己的列。migration：`20260321150000_gm_select_self_only.sql`；診斷用 SQL：`supabase/diagnostics/check_group_rls.sql`
+- `[DOCS]` RLS 範例、**群組內排行榜 view** 若需掃全體成員須改 **SECURITY DEFINER**／RPC（見 migration 註解）
+- `[DOCS]` 本 Changelog
+
+### [2026-03-21] v0.10.17 — group_members RLS 遞迴（補強）
+
+- `[FIX]` `[DB]` `user_is_member_of_group` 增加 **`SET row_security = off`**（Supabase 上否則函式內 SELECT 仍會套用 RLS）；**`groups.g_select`** 改為 `is_public OR user_is_member_of_group(id)`，**不再**使用 `id IN (SELECT … FROM group_members …)`，避免與 `gm_select` 形成第二條遞迴鏈。補檔：`20260321140000_group_members_rls_supplement.sql`（可重複執行）；`20260321130000`／`initial.sql` 已同步
+- `[DOCS]` RLS 範例與本 Changelog
+
+### [2026-03-21] v0.10.16 — 修正 group_members RLS 無限遞迴
+
+- `[FIX]` `[DB]` `gm_select` 改為 `auth.uid() = user_id OR user_is_member_of_group(group_id)`；新增 `user_is_member_of_group(uuid)`（`SECURITY DEFINER`，內部查詢略過 RLS，避免政策內再查 `group_members` 造成 **infinite recursion**）。migration：`20260321130000_fix_group_members_rls_recursion.sql`；`20260321000000_initial.sql` 已同步供新環境
+- `[DOCS]` RLS 範例段落與本 Changelog
+
+### [2026-03-21] v0.10.15 — 群組頁錯誤顯示、信箱邀請與待處理邀請
+
+- `[FIX]` `useGroups`：Supabase 錯誤非 `Error` 實例時改以 `toErrorMessage` 解析，避免整頁顯示 `[object Object]`
+- `[FEAT]` `group_invitations` + RPC：建立者發送信箱邀請、列出待處理邀請、受邀者接受／拒絕（JWT email 與受邀信箱須一致）
+- `[FEAT]` `GroupHub`：待處理邀請區、建立者「以信箱邀請成員」、邀請碼輸入限制長度與字元、公開／私人加入結果訊息；`listMyGroups` 補 `created_by` 以辨識建立者
+- `[DOCS]` 「群組」規格、資料表摘要與本 Changelog
 
 ### [2026-03-21] v0.10.14 — 輸入一鍵清除、常用連結今日後重置表單
 

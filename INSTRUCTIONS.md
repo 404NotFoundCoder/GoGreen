@@ -12,21 +12,22 @@
 1. [專案概述](#專案概述)
 2. [技術棧選擇與理由](#技術棧選擇與理由)
 3. [設計系統](#設計系統)
-4. [系統功能規格](#系統功能規格)
-5. [分數系統設計](#分數系統設計)
-6. [排行榜設計](#排行榜設計)
-7. [架構原則](#架構原則)
-8. [分層職責說明](#分層職責說明)
-9. [常數定義規範](#常數定義規範)
-10. [資料庫規範（Supabase）](#資料庫規範supabase)
-11. [Realtime 規範](#realtime-規範)
-12. [PWA 規範](#pwa-規範)
-13. [推播通知規範](#推播通知規範)
-14. [UI/UX 與多裝置規範](#uiux-與多裝置規範)
-15. [開發者文件維護規範](#開發者文件維護規範)
-16. [環境變數](#環境變數)
-17. [Commit 訊息規範](#commit-訊息規範)
-18. [Changelog](#changelog)
+4. [路由與登入保護（已實作）](#路由與登入保護已實作)
+5. [系統功能規格](#系統功能規格)
+6. [分數系統設計](#分數系統設計)
+7. [排行榜設計](#排行榜設計)
+8. [架構原則](#架構原則)
+9. [分層職責說明](#分層職責說明)
+10. [常數定義規範](#常數定義規範)
+11. [資料庫規範（Supabase）](#資料庫規範supabase)
+12. [Realtime 規範](#realtime-規範)
+13. [PWA 規範](#pwa-規範)
+14. [推播通知規範](#推播通知規範)
+15. [UI/UX 與多裝置規範](#uiux-與多裝置規範)
+16. [開發者文件維護規範](#開發者文件維護規範)
+17. [環境變數](#環境變數)
+18. [Commit 訊息規範](#commit-訊息規範)
+19. [Changelog](#changelog)
 
 ---
 
@@ -46,14 +47,15 @@
 
 ## 技術棧選擇與理由
 
-| 層級          | 工具                          |
-| ------------- | ----------------------------- |
-| 框架          | Next.js 14（App Router）      |
-| 資料庫 / 認證 | Supabase（PostgreSQL + Auth） |
-| 樣式          | Tailwind CSS                  |
-| 狀態管理      | React Context + custom hooks  |
-| 儲存          | Supabase Storage（打卡照片）  |
-| 部署          | Vercel                        |
+| 層級          | 工具                                                                 |
+| ------------- | -------------------------------------------------------------------- |
+| 框架          | Next.js 16（App Router）；生產建置使用 `next build --webpack`（與 PWA 相容） |
+| UI            | React 19、Tailwind CSS 4                                            |
+| 資料庫 / 認證 | Supabase（PostgreSQL + Auth）                                        |
+| 狀態管理      | React Context + `hooks/`                                            |
+| PWA           | `@ducanh2912/next-pwa`（見 [PWA 規範](#pwa-規範)）                     |
+| 儲存          | Supabase Storage（打卡照片，規格已訂；上傳 UI `[未實作]`）             |
+| 部署          | Vercel（建議）                                                       |
 
 ### 為什麼選 Supabase 而非 Firebase
 
@@ -164,6 +166,27 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ---
 
+## 路由與登入保護（已實作）
+
+| 路徑 | 說明 |
+| ---- | ---- |
+| `/` | 首頁（未登入；玩法說明、Google 開始 CTA） |
+| `/login` | 登入頁（Google） |
+| `/auth/callback` | Supabase OAuth callback |
+| `/today` | 今日檢核（需登入） |
+| `/leaderboard` | 全體排行榜（需登入） |
+| `/groups` | 群組（需登入） |
+| `/profile` | 個人／暱稱（需登入） |
+
+**登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 `redirect('/login')`。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
+
+**對應程式：**
+
+- **Hooks（`hooks/`）**：`useTodayChecklist`、`useGlobalLeaderboard`、`useGroups`、`useProfile`
+- **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`
+
+---
+
 ## 系統功能規格
 
 ### 主畫面 — 今日檢核 `部分完成`
@@ -203,13 +226,13 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 創群時選擇**公開**（任何人可搜尋加入）或**私人**（需邀請碼）
 - `[done]` 邀請碼為 6 碼英數字串，唯一不重複，定義於常數 `INVITE_CODE_LENGTH`
 - `[未實作]` 創群時設定此群組的公版清單（可從系統預設複製後修改）；目前僅使用系統預設公版範本
-- `[planned]` 群組間排名使用**平均標準化分**（後端／視角若已部分實作請在此補子項標記）
+- `[planned]` 群組間排名使用**平均標準化分**（見「排行榜設計 → 群組 vs 群組」；後端 view 可擴充，前端頁 `[planned]`）
 
-### 認證與使用者 `部分完成`
+### 認證與使用者 `[done]`
 
 - `[done]` 透過 Google 登入（Supabase Auth）
-- `[done]` 新使用者寫入 `public.users`（trigger）；首次進入 App 會跳出**暱稱引導**（可改寫暱稱），完成後不再顯示（`onboarding_completed`，見 migration）
-- `[done]` 使用者可在 profile 頁修改暱稱；暱稱顯示於排行榜
+- `[done]` 新使用者寫入 `public.users`（trigger）；首次進入 App 會跳出**暱稱引導**（可改寫暱稱），完成後不再顯示（`users.onboarding_completed`，見 migration `20260321100000_user_onboarding.sql`）
+- `[done]` 使用者可在 `/profile` 修改暱稱；暱稱顯示於排行榜
 - `[done]` 後端仍以 Google 名稱／email 前綴作為初次後備暱稱（見 `handle_new_user`）
 
 ### 自訂行動 `部分完成`
@@ -305,14 +328,18 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - 統計面板：參與人數、全體行動次數、本週最熱門行動、SDG 全覆蓋狀況 `[planned]`
 - 圖表：全體 SDG 行動分布（長條圖）、每日完成項次趨勢（折線圖）`[planned]`
 
-### 群組內排行榜
+### 群組內排行榜 `[planned]`
+
+> 後端已有 `leaderboard_groups` view 等資料基礎；**專用 UI／頁面尚未實作**，以下為目標規格。
 
 - 成員排名（四個子 tab）
 - 統計面板：群組總分、SDG 覆蓋數、最長 streak、本週最活躍成員
 - 圖表：群組 SDG 行動分布（長條圖）、各成員完成項數比較（長條圖）
 - 成員打卡狀態即時更新（透過 Realtime，見 Realtime 規範章節）
 
-### 群組 vs 群組
+### 群組 vs 群組 `[planned]`
+
+> **平均標準化分**等邏輯可於 SQL／RPC 擴充；**前端群組對群組排行榜頁**尚未實作。
 
 - 群組間依**平均標準化分**排名（四個子 tab 同樣適用）
 - 子 tab 的維度改為平均值（平均分、平均完成數、群組 SDG 覆蓋數、總加權）
@@ -320,7 +347,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - 群組列表顯示：公開/私人 badge、成員數、平均分、SDG 覆蓋數
 - 圖表：各群組平均分比較（長條圖）、各群組 SDG 覆蓋數比較（長條圖）
 
-### 個人記錄
+### 個人記錄 `[planned]`
+
+> **`/profile` 目前以暱稱等基礎資料為主**；以下為目標規格。
 
 - 統計數字全部顯示**原始值**，不標準化
 - 打卡日曆（密度色塊，類似 GitHub contribution graph）
@@ -431,13 +460,16 @@ Context Provider 掛載順序定義在 `app/layout.tsx`，
 ```
 app/              → 路由與 layout，組裝元件，不含邏輯
 components/       → UI 元件，分功能型（可用 context）與純展示型（只接 props）
-hooks/            → 業務邏輯、資料操作、UI 狀態管理
-context/          → 跨頁面共享的全域狀態
-lib/supabase/     → Supabase 所有查詢與操作的唯一入口
-lib/utils/        → 純函式工具（不依賴 Supabase 或 React，e.g. 分數計算、日期工具）
-constants/        → 全域常數、資料定義
-types/            → TypeScript 型別定義
+hooks/            → 業務邏輯、資料操作、UI 狀態管理（見下「目前檔案」）
+context/          → 跨頁面共享的全域狀態（e.g. AuthContext）
+lib/supabase/     → Supabase 所有查詢與操作的唯一入口（見下「目前檔案」）
+lib/utils/        → 純函式工具（不依賴 Supabase 或 React，e.g. 日期）
+constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
 ```
+
+**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGroups.ts`、`useProfile.ts`
+
+**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`
 
 **元件分兩種：**
 
@@ -526,7 +558,8 @@ create table users (
   nickname    text not null,
   email       text,
   photo_url   text,
-  created_at  timestamptz default now()
+  created_at  timestamptz default now(),
+  onboarding_completed boolean not null default false  -- migration 20260321100000_user_onboarding.sql
 );
 
 -- SDG 目標（seed 資料，不由 client 寫入；配色與 `constants/sdg.ts` 之 SDG_COLORS 同步）
@@ -851,24 +884,23 @@ export function useGroupLeaderboard(groupId: string) {
 
 GoGreen 實作為 PWA（Progressive Web App），讓使用者可以安裝到手機主畫面，並接收推播通知。
 
-### 套件
+### 套件與設定
 
-```bash
-npm install next-pwa
-```
+本專案使用 **`@ducanh2912/next-pwa`**（相容 Next 15+）。設定集中在根目錄 **`next.config.ts`**：
 
-### `next.config.js` 設定
+```ts
+import withPWAInit from "@ducanh2912/next-pwa";
 
-```js
-const withPWA = require("next-pwa")({
+const withPWA = withPWAInit({
   dest: "public",
-  disable: process.env.NODE_ENV === "development", // 開發環境關閉，避免干擾
+  disable: process.env.NODE_ENV === "development",
 });
 
-module.exports = withPWA({
-  // 原本的 Next.js config
-});
+export default withPWA(nextConfig);
 ```
+
+- 開發模式預設關閉 PWA，避免快取／service worker 干擾除錯。
+- 生產建置請使用 **`npm run build`**（已設為 `next build --webpack`），以相容本套件與既有設定。
 
 ### `public/manifest.json`
 
@@ -1007,12 +1039,12 @@ Tailwind 預設斷點，統一使用，不自訂：
 
 ### Layout 行為
 
-| 頁面 / 元件 | 手機         | 平板             | 桌面                |
-| ----------- | ------------ | ---------------- | ------------------- |
-| 主導航      | 底部 tab bar | 底部 tab bar     | 左側 sidebar        |
-| 檢核表      | 單欄列表     | 單欄列表（較寬） | 雙欄（清單 + 統計） |
-| 排行榜      | 全寬列表     | 全寬列表         | 列表 + 側邊圖表     |
-| 統計圖表    | 全寬         | 全寬             | 並排顯示            |
+| 頁面 / 元件 | 手機         | 平板             | 桌面                                      |
+| ----------- | ------------ | ---------------- | ----------------------------------------- |
+| 主導航      | 底部 tab bar | 底部 tab bar     | 左側 sidebar                              |
+| 檢核表      | 單欄列表     | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]`   |
+| 排行榜      | 全寬列表     | 全寬列表         | 全寬列表（側邊圖表為目標 `[planned]`）     |
+| 統計圖表    | 全寬         | 全寬             | 並排顯示 `[planned]`                      |
 
 ### 觸控規範（手機 / 平板）
 
@@ -1023,24 +1055,24 @@ Tailwind 預設斷點，統一使用，不自訂：
 
 ### 動畫與互動規範
 
-- 頁面切換使用滑入動畫（`transform + opacity`），不用 fade alone
-- 勾選行動時有彈跳動畫 + 葉片生長視覺效果
-- 全部完成觸發慶祝動畫（confetti 或類似效果）
-- 所有動畫時長控制在 **150–400ms**，不過長
-- 尊重使用者系統設定：`prefers-reduced-motion` 時關閉動畫
+- 今日檢核：蓋章落下、漣漪、粒子、整列 spring、分數 bump、半程 toast、全完成 **DOM 彩帶** + overlay 等，定義於 `app/globals.css`（`gg-*` class）與相關元件
+- 全部完成慶祝僅在「當次操作剛好打滿」時觸發（見「主畫面 — 今日檢核」）
+- 互動動畫宜俐落；多數在 **約 150–450ms** 量級，避免拖長
+- **尊重 `prefers-reduced-motion`：** `globals.css` 對 `transition` 與部分動畫縮短／弱化；**勿**對全域 `animation: none !important` 一刀切（會破壞無障礙與蓋章動效細節）。若新增全頁動畫，沿用同一檔案之 reduce 區塊模式
 
 ```css
+/* 範例：僅示意；實作以 globals.css 為準 */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
+  .gg-stamp-spring,
+  .gg-stat-bump {
+    animation-duration: 0.2s !important;
   }
 }
 ```
 
 ### 質感規範
 
-- 字體：Tailwind 預設 sans-serif，中文使用系統字體（`font-sans`）
+- 字體：全站主字型 **Noto Sans TC**（`next/font/google`，`app/layout.tsx` 套用於 `body`）；`app/globals.css` 之 `--font-sans` 與之對齊
 - 行高：內文 `leading-relaxed`（1.625），標題 `leading-tight`（1.25）
 - 圓角：小元件 `rounded-lg`（8px），卡片 `rounded-2xl`（16px），按鈕 `rounded-full`
 - 邊框：統一 `0.5px`，顏色使用 `--color-muted`
@@ -1052,8 +1084,8 @@ Tailwind 預設斷點，統一使用，不自訂：
 每個列表、圖表、排行榜都必須有空狀態設計（不能只有空白）：
 
 - 排行榜沒有資料 → 顯示「還沒有人上榜，成為第一個！」
-- 今日清單全部完成 → 顯示慶祝畫面
-- 常用清單是空的 → 顯示引導文字「把常做的行動加入收藏，之後快速取用」
+- 今日清單全部完成 → 依情境顯示全完成 overlay／內聯「今日全部完成」提示（見今日檢核規格；**非**每次進頁都播動畫）
+- 常用清單是空的 → 顯示引導文字「把常做的行動加入收藏，之後快速取用」`[planned]`（常用清單 UI 尚未實作時可略）
 
 ### 載入狀態設計
 
@@ -1193,6 +1225,12 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-21] v0.10.7 — INSTRUCTIONS 補齊與現況對齊
+
+- `[DOCS]` 新增「路由與登入保護」、技術棧（Next 16／React 19／PWA 套件）、`hooks`／`lib/supabase` 檔案清單
+- `[DOCS]` 認證與使用者改 `[done]`；`users` 補 `onboarding_completed`；排行榜「群組內／群組 vs 群組／個人記錄」標示 `[planned]` 與現況說明
+- `[DOCS]` PWA 改為 `@ducanh2912/next-pwa` + `next.config.ts`；字體 Noto Sans TC；動畫與 `prefers-reduced-motion` 與實作一致；空狀態／Layout 表與實作對齊
 
 ### [2026-03-21] v0.10.6 — 資料庫 sdgs 與前端 SDG_COLORS 對齊
 

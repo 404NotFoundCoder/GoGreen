@@ -13,19 +13,23 @@ function CustomChecklistRow({
   item,
   done,
   onToggle,
+  disabled,
 }: {
   item: CustomItemRow;
   done: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onToggle}
       className={[
         "flex min-h-[44px] w-full flex-col gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] p-4 text-left transition-transform motion-safe:duration-200",
         "bg-[var(--color-surface)]",
         done ? "bg-[var(--color-primary-light)]" : "",
+        disabled ? "opacity-60" : "",
       ].join(" ")}
     >
       <div className="flex items-start gap-3">
@@ -73,6 +77,7 @@ export function TodayChecklist() {
     doneCount,
     allDone,
     date,
+    pendingToggle,
   } = useTodayChecklist();
 
   const celebrated = useRef(false);
@@ -111,8 +116,7 @@ export function TodayChecklist() {
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-      <div className="min-w-0 flex-1 space-y-3">
+    <div className="min-w-0 space-y-3">
         <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] p-4">
           <p className="text-sm text-[var(--color-ink-secondary)]">日期（UTC+8）</p>
           <p className="mt-1 text-lg font-semibold text-[var(--color-ink)]">
@@ -167,6 +171,7 @@ export function TodayChecklist() {
               <ChecklistRow
                 item={item}
                 done={checkinItemIds.has(item.id)}
+                disabled={pendingToggle === `p:${item.id}`}
                 onToggle={() => void togglePublic(item.id)}
               />
             </div>
@@ -179,20 +184,13 @@ export function TodayChecklist() {
               key={item.id}
               item={item}
               done={checkinCustomIds.has(item.id)}
+              disabled={pendingToggle === `c:${item.id}`}
               onToggle={() => void toggleCustom(item.id)}
             />
           ))}
         </div>
 
         <AddCustomForm onSubmit={addCustom} />
-      </div>
-
-      <aside className="hidden w-full max-w-sm shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] p-4 lg:block">
-        <p className="text-sm font-medium text-[var(--color-ink)]">小提示</p>
-        <p className="mt-2 text-sm leading-relaxed text-[var(--color-ink-secondary)]">
-          點擊整列即可勾選。完成後會更新排行榜與連續天數。手機版請使用下方導覽切換頁面。
-        </p>
-      </aside>
     </div>
   );
 }

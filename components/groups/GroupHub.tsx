@@ -20,6 +20,7 @@ export function GroupHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const onCreate = async () => {
@@ -116,10 +117,16 @@ export function GroupHub() {
           />
           <button
             type="button"
-            className="min-h-[44px] rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium"
-            onClick={() => void joinPrivate(code).catch(console.error)}
+            disabled={pending === "private-join"}
+            className="min-h-[44px] rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium disabled:opacity-50"
+            onClick={() => {
+              setPending("private-join");
+              void joinPrivate(code)
+                .catch(console.error)
+                .finally(() => setPending(null));
+            }}
           >
-            加入私人
+            {pending === "private-join" ? "加入中…" : "加入私人"}
           </button>
         </div>
       </section>
@@ -163,10 +170,14 @@ export function GroupHub() {
                   </div>
                   <button
                     type="button"
-                    className="min-h-[44px] rounded-full px-3 text-sm text-red-800"
-                    onClick={() => void leave(g.id)}
+                    disabled={pending === `leave:${g.id}`}
+                    className="min-h-[44px] rounded-full px-3 text-sm text-red-800 disabled:opacity-50"
+                    onClick={() => {
+                      setPending(`leave:${g.id}`);
+                      void leave(g.id).finally(() => setPending(null));
+                    }}
                   >
-                    退出
+                    {pending === `leave:${g.id}` ? "退出中…" : "退出"}
                   </button>
                 </li>
               );
@@ -200,10 +211,14 @@ export function GroupHub() {
                 </div>
                 <button
                   type="button"
-                  className="min-h-[44px] rounded-full bg-[var(--color-primary-pale)] px-4 py-2 text-sm font-medium text-[var(--color-primary-dark)]"
-                  onClick={() => void joinPublic(g.id)}
+                  disabled={pending === `join:${g.id}`}
+                  className="min-h-[44px] rounded-full bg-[var(--color-primary-pale)] px-4 py-2 text-sm font-medium text-[var(--color-primary-dark)] disabled:opacity-50"
+                  onClick={() => {
+                    setPending(`join:${g.id}`);
+                    void joinPublic(g.id).finally(() => setPending(null));
+                  }}
                 >
-                  加入
+                  {pending === `join:${g.id}` ? "加入中…" : "加入"}
                 </button>
               </li>
             ))}

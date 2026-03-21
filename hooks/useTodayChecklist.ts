@@ -28,7 +28,7 @@ export type TodayStats = {
 } | null;
 
 export function useTodayChecklist() {
-  const { user } = useAuthContext();
+  const { user, loading: authLoading } = useAuthContext();
   const date = getTodayString();
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [items, setItems] = useState<ChecklistItemRow[]>([]);
@@ -40,81 +40,128 @@ export function useTodayChecklist() {
   const [stats, setStats] = useState<TodayStats>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const tid = await getUserTemplateId(user.id);
+        setTemplateId(tid);
+        const [list, checkins, customs, st] = await Promise.all([
+          fetchActiveChecklistItems(tid),
+          fetchTodayCheckins(user.id, date),
+          fetchTodayCustomRows(user.id, date),
+          fetchUserDailyStatsForDate(user.id, date),
+        ]);
+        setItems(list);
+        setCustomItems(customs as CustomItemRow[]);
+        const itemDone = new Set<string>();
+        const customDone = new Set<string>();
+        for (const c of checkins) {
+          if (c.item_id) itemDone.add(c.item_id as string);
+          if (c.custom_item_id) customDone.add(c.custom_item_id as string);
+        }
+        setCheckinItemIds(itemDone);
+        setCheckinCustomIds(customDone);
+        setStats(
+          st
+            ? {
+                completed_count: st.completed_count as number,
+                total_items: st.total_items as number,
+                raw_score: st.raw_score as number,
+                normalized_score: Number(st.normalized_score),
+                streak: st.streak as number,
+                sdg_coverage: st.sdg_coverage as number,
+              }
+            : null,
+        );
+      } catch (e) {
+        setError(e instanceof Error ? e : new Error(String(e)));
+      } finally {
+        if (!opts?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [user, date],
+  );
+
+  useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setError(null);
-    try {
-      const tid = await getUserTemplateId(user.id);
-      setTemplateId(tid);
-      const [list, checkins, customs, st] = await Promise.all([
-        fetchActiveChecklistItems(tid),
-        fetchTodayCheckins(user.id, date),
-        fetchTodayCustomRows(user.id, date),
-        fetchUserDailyStatsForDate(user.id, date),
-      ]);
-      setItems(list);
-      setCustomItems(customs as CustomItemRow[]);
-      const itemDone = new Set<string>();
-      const customDone = new Set<string>();
-      for (const c of checkins) {
-        if (c.item_id) itemDone.add(c.item_id as string);
-        if (c.custom_item_id) customDone.add(c.custom_item_id as string);
-      }
-      setCheckinItemIds(itemDone);
-      setCheckinCustomIds(customDone);
-      setStats(
-        st
-          ? {
-              completed_count: st.completed_count as number,
-              total_items: st.total_items as number,
-              raw_score: st.raw_score as number,
-              normalized_score: Number(st.normalized_score),
-              streak: st.streak as number,
-              sdg_coverage: st.sdg_coverage as number,
-            }
-          : null,
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, [user, date]);
-
-  useEffect(() => {
     void load();
-  }, [load]);
+  }, [user, authLoading, load]);
 
   const togglePublic = async (itemId: string) => {
-    if (!user) return;
+    if (!user || pendingToggle) return;
     const done = checkinItemIds.has(itemId);
-    await setPublicItemDone({
-      userId: user.id,
-      date,
-      itemId,
-      done: !done,
+    const nextDone = !done;
+    setPendingToggle(`p:${itemId}`);
+    setCheckinItemIds((prev) => {
+      const s = new Set(prev);
+      if (nextDone) s.add(itemId);
+      else s.delete(itemId);
+      return s;
     });
-    await load();
+    try {
+      await setPublicItemDone({
+        userId: user.id,
+        date,
+        itemId,
+        done: nextDone,
+      });
+      await load({ silent: true });
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+      await load({ silent: true });
+    } finally {
+      setPendingToggle(null);
+    }
   };
 
   const toggleCustom = async (customItemId: string) => {
-    if (!user) return;
+    if (!user || pendingToggle) return;
     const done = checkinCustomIds.has(customItemId);
-    await setCustomItemDone({
-      userId: user.id,
-      date,
-      customItemId,
-      done: !done,
+    const nextDone = !done;
+    setPendingToggle(`c:${customItemId}`);
+    setCheckinCustomIds((prev) => {
+      const s = new Set(prev);
+      if (nextDone) s.add(customItemId);
+      else s.delete(customItemId);
+      return s;
     });
-    await load();
+    try {
+      await setCustomItemDone({
+        userId: user.id,
+        date,
+        customItemId,
+        done: nextDone,
+      });
+      await load({ silent: true });
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+      await load({ silent: true });
+    } finally {
+      setPendingToggle(null);
+    }
   };
 
-  const addCustom = async (title: string, sdgIds: number[], favorite: boolean) => {
+  const addCustom = async (
+    title: string,
+    sdgIds: number[],
+    favorite: boolean,
+  ) => {
     if (!user) return;
     const slots = await countTodayCustomSlots(user.id, date);
     if (slots >= MAX_CUSTOM_ITEMS) {
@@ -127,7 +174,7 @@ export function useTodayChecklist() {
       sdgIds,
       isFavorite: favorite,
     });
-    await load();
+    await load({ silent: true });
   };
 
   const totalSlots = items.length + customItems.length;
@@ -135,6 +182,8 @@ export function useTodayChecklist() {
     items.filter((i) => checkinItemIds.has(i.id)).length +
     customItems.filter((c) => checkinCustomIds.has(c.id)).length;
   const allDone = totalSlots > 0 && doneCount === totalSlots;
+
+  const showSkeleton = loading || authLoading;
 
   return {
     date,
@@ -144,7 +193,7 @@ export function useTodayChecklist() {
     checkinItemIds,
     checkinCustomIds,
     stats,
-    loading,
+    loading: showSkeleton,
     error,
     refetch: load,
     togglePublic,
@@ -153,5 +202,6 @@ export function useTodayChecklist() {
     totalSlots,
     doneCount,
     allDone,
+    pendingToggle,
   };
 }

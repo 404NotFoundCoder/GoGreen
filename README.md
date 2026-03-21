@@ -11,7 +11,7 @@ GoGreen 是以聯合國 17 個 SDG 為核心的每日行動檢核 web app：完�
 | 功能 | 說明 |
 | --- | --- |
 | 今日檢核 | 公版清單勾選、自訂行動（含 SDG、收藏）、連續天數與每日統計 |
-| Google 登入 | Supabase Auth OAuth，登入後同步 `users` 暱稱 |
+| Google 登入 | Supabase Auth OAuth，登入後同步 `users`；首次進入 App 可確認暱稱（`onboarding_completed`） |
 | 個人資料 | 修改暱稱 |
 | 群組 | 建立公開／私人（邀請碼）、加入公開群組、邀請碼加入私人、退出 |
 | 全體排行榜 | 本週／本月／累計 × 四維度（總加權／分數／完成數／SDG 覆蓋），Realtime 訂閱 `user_daily_stats` |
@@ -54,6 +54,8 @@ cp .env.example .env.local
 在 Supabase **SQL Editor** 執行：
 
 `supabase/migrations/20260321000000_initial.sql`
+
+若需首次登入暱稱引導，另執行 `supabase/migrations/20260321100000_user_onboarding.sql`。
 
 完成後於 **Database → Replication**（或 SQL）將 `daily_checkins`、`user_daily_stats` 納入 Realtime publication（語句見 INSTRUCTIONS.md「Realtime 規範」）。
 

@@ -1,31 +1,36 @@
 import { HomeAuthRedirect } from "@/components/home/HomeAuthRedirect";
-import Link from "next/link";
+import { HomeContentCarousel } from "@/components/home/HomeContentCarousel";
+import { HomeGoogleStartButton } from "@/components/home/HomeGoogleStartButton";
+import { BrandMark } from "@/components/layout/BrandMark";
 
 /** 首頁不呼叫 Supabase 伺服器端，避免未設定 .env 時整站 500 */
 export default function Home() {
   return (
     <>
       <HomeAuthRedirect />
-      <main className="flex min-h-full flex-1 flex-col bg-[var(--color-bg)] px-4 py-16">
-        <div className="mx-auto max-w-xl text-center">
-          <h1 className="text-3xl font-bold text-[var(--color-ink)]">GoGreen</h1>
-          <p className="mt-4 text-lg leading-relaxed text-[var(--color-ink-secondary)]">
-            以聯合國 SDG 為核心的每日永續行動檢核。完成行動、累積分數，與群組一起成長。
-          </p>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link
-              href="/login"
-              className="inline-flex min-h-[44px] min-w-[200px] items-center justify-center rounded-full bg-[var(--color-primary-strong)] px-6 py-3 text-sm font-medium text-[var(--color-white)]"
-            >
-              開始使用
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-6 py-3 text-sm font-medium text-[var(--color-ink)]"
-            >
-              登入
-            </Link>
-          </div>
+      <main className="flex min-h-full flex-1 flex-col bg-[var(--color-bg)] px-4 py-14 sm:py-20">
+        <div className="mx-auto w-full max-w-3xl">
+          <header className="text-center">
+            <div className="flex justify-center">
+              <BrandMark href="/" size="hero" />
+            </div>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-primary-dark)] sm:text-sm">
+              永續行動 × 遊戲化習慣
+            </p>
+            <h1 className="mx-auto mt-6 max-w-[18ch] text-balance text-3xl font-bold leading-[1.15] tracking-tight text-[var(--color-ink)] sm:max-w-none sm:text-4xl">
+              把永續變成
+              <br className="sm:hidden" />
+              每天想打開的習慣
+            </h1>
+
+            <HomeContentCarousel />
+
+            <div className="mt-12 flex justify-center sm:mt-14">
+              <HomeGoogleStartButton className="inline-flex min-h-[52px] min-w-[220px] items-center justify-center rounded-full bg-[var(--color-primary-strong)] px-10 py-3.5 text-sm font-semibold text-[var(--color-white)] transition-colors hover:bg-[var(--color-primary-dark)] disabled:opacity-50">
+                我準備好了
+              </HomeGoogleStartButton>
+            </div>
+          </header>
         </div>
       </main>
     </>

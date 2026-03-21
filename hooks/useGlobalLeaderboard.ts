@@ -17,18 +17,21 @@ export function useGlobalLeaderboard(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await fetchGlobalLeaderboard(period, dimension);
-      setData(rows);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, [period, dimension]);
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      setError(null);
+      try {
+        const rows = await fetchGlobalLeaderboard(period, dimension);
+        setData(rows);
+      } catch (e) {
+        setError(e instanceof Error ? e : new Error(String(e)));
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [period, dimension],
+  );
 
   useEffect(() => {
     void load();
@@ -43,7 +46,7 @@ export function useGlobalLeaderboard(
         "postgres_changes",
         { event: "*", schema: "public", table: "user_daily_stats" },
         () => {
-          void load();
+          void load({ silent: true });
         },
       )
       .subscribe();

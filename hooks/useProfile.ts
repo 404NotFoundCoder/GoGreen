@@ -5,7 +5,7 @@ import { useAuthContext } from "@/context/AuthContext";
 import { useCallback, useEffect, useState } from "react";
 
 export function useProfile() {
-  const { user } = useAuthContext();
+  const { user, loading: authLoading } = useAuthContext();
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -28,8 +28,9 @@ export function useProfile() {
   }, [user]);
 
   useEffect(() => {
+    if (authLoading) return;
     void load();
-  }, [load]);
+  }, [load, authLoading]);
 
   const save = async (next: string) => {
     if (!user) return;
@@ -37,5 +38,12 @@ export function useProfile() {
     await load();
   };
 
-  return { nickname, setNickname, loading, error, save, refetch: load };
+  return {
+    nickname,
+    setNickname,
+    loading: loading || authLoading,
+    error,
+    save,
+    refetch: load,
+  };
 }

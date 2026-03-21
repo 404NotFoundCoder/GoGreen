@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { useProfileNickname } from "@/hooks/useProfileNickname";
 import { useAuthContext } from "@/context/AuthContext";
 import { LogOut, User } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +19,8 @@ function sessionAvatarUrl(meta: Record<string, unknown>): string | undefined {
   return typeof a === "string" && a.length > 0 ? a : undefined;
 }
 
-function sessionDisplayName(
+/** OAuth 後備顯示名（僅在暱稱尚未載入時） */
+function fallbackDisplayName(
   meta: Record<string, unknown>,
   email?: string | null,
 ) {
@@ -68,7 +70,8 @@ type Props = { variant: "sidebar" | "bar" };
 
 export function UserAccountMenu({ variant }: Props) {
   const menuId = useId();
-  const { user, loading } = useAuthContext();
+  const { user, loading: authLoading } = useAuthContext();
+  const { nickname, loading: nickLoading } = useProfileNickname();
   const router = useRouter();
   const wrapRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -103,6 +106,8 @@ export function UserAccountMenu({ variant }: Props) {
     };
   }, [open]);
 
+  const loading = authLoading || nickLoading;
+
   if (loading) {
     return (
       <div
@@ -119,7 +124,10 @@ export function UserAccountMenu({ variant }: Props) {
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const avatarUrl = sessionAvatarUrl(meta);
-  const name = sessionDisplayName(meta, user.email);
+  const displayName =
+    nickname && nickname.length > 0
+      ? nickname
+      : fallbackDisplayName(meta, user.email);
 
   const panel = (
     <div
@@ -163,6 +171,7 @@ export function UserAccountMenu({ variant }: Props) {
           aria-expanded={open}
           aria-haspopup="menu"
           aria-controls={open ? menuId : undefined}
+          aria-label={`帳號選單，${displayName}`}
           onClick={() => setOpen((v) => !v)}
         >
           <AvatarImg url={avatarUrl} size="sm" />
@@ -184,7 +193,7 @@ export function UserAccountMenu({ variant }: Props) {
       >
         <AvatarImg url={avatarUrl} size="lg" />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--color-ink)]">
-          {name}
+          {displayName}
         </span>
       </button>
       {open ? panel : null}

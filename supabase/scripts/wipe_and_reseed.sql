@@ -4,7 +4,7 @@
 -- 對照範圍：與 `supabase/migrations/*.sql` 內 **public 業務表**一致，亦涵蓋你從
 -- Dashboard 匯出之 12 表（checklist_items / checklist_templates / custom_items /
 -- daily_checkins / group_invitations / group_members / groups /
--- push_subscriptions / sdgs / user_daily_custom_items / user_daily_stats / users）。
+-- push_subscriptions / sdgs / user_daily_custom_items / user_daily_notes / user_daily_stats / users）。
 -- 若日後 migration 新增 public 表，請同步補進下方 TRUNCATE 清單。
 --
 -- 適用：本機 Supabase / 雲端專案 SQL Editor（須具足夠權限）。
@@ -26,6 +26,7 @@ truncate table
   public.daily_checkins,
   public.user_daily_stats,
   public.user_daily_custom_items,
+  public.user_daily_notes,
   public.push_subscriptions,
   public.group_invitations,
   public.group_members,

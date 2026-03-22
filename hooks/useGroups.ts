@@ -10,6 +10,7 @@ import {
   listMyGroups,
   listPendingGroupInvites,
   listPublicGroups,
+  ownerRemoveGroupMember,
   respondGroupEmailInvite,
   type PendingGroupInviteRow,
 } from "@/lib/supabase/groups";
@@ -110,6 +111,12 @@ export function useGroups() {
     await load({ silent: true });
   };
 
+  const removeMember = async (groupId: string, targetUserId: string) => {
+    if (!user) return;
+    await ownerRemoveGroupMember(groupId, targetUserId);
+    await load({ silent: true });
+  };
+
   return {
     mine,
     publicList,
@@ -125,5 +132,6 @@ export function useGroups() {
     sendEmailInvites,
     respondInvite,
     deleteGroup: removeGroup,
+    removeMember,
   };
 }

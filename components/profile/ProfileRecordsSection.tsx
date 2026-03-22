@@ -21,6 +21,7 @@ import {
   clearUserCalendarDay,
   fetchUserDayActivityExtrasInRange,
 } from "@/lib/supabase/checklist";
+import { fetchUserDayNote, upsertUserDayNote } from "@/lib/supabase/dayNote";
 import { fetchUserDailyStatsInRange } from "@/lib/supabase/stats";
 import type { DailyStatRow } from "@/lib/supabase/stats";
 import { useAuthContext } from "@/context/AuthContext";
@@ -35,7 +36,9 @@ import {
   type HeatmapLayout,
 } from "@/lib/utils/heatmapLayout";
 import { eachDateStringInRange, getTodayString } from "@/lib/utils/date";
+import { rowMatchesSdgFilter } from "@/lib/utils/sdgFilter";
 import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
+import { SdgFilterBar } from "@/components/ui/SdgFilterBar";
 import { SdgTagStrip } from "@/components/ui/SdgTagStrip";
 import {
   Calendar,
@@ -370,6 +373,7 @@ export function ProfileRecordsSection() {
     () => getActionCompletionDateBounds("week").end,
   );
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [sdgFilter, setSdgFilter] = useState<Set<number>>(() => new Set());
   const periodBarRef = useRef<HTMLDivElement>(null);
   const [rangePanelOpen, setRangePanelOpen] = useState(false);
 
@@ -403,6 +407,26 @@ export function ProfileRecordsSection() {
   useEffect(() => {
     setExpanded(null);
   }, [chartStart, chartEnd]);
+
+  useEffect(() => {
+    setExpanded(null);
+  }, [sdgFilter]);
+
+  const templateRowsFiltered = useMemo(
+    () =>
+      templateRows.filter((r) =>
+        rowMatchesSdgFilter(r.sdgIds, sdgFilter),
+      ),
+    [templateRows, sdgFilter],
+  );
+
+  const customRowsFiltered = useMemo(
+    () =>
+      customRows.filter((r) =>
+        rowMatchesSdgFilter(r.sdgIds, sdgFilter),
+      ),
+    [customRows, sdgFilter],
+  );
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
   const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
     () => new Set(),
@@ -435,6 +459,9 @@ export function ProfileRecordsSection() {
   const [addDatePick, setAddDatePick] = useState("");
   const [deleteDate, setDeleteDate] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [dlgDayNote, setDlgDayNote] = useState("");
+  const [dlgDayNoteLoading, setDlgDayNoteLoading] = useState(false);
+  const [dlgDayNoteSaving, setDlgDayNoteSaving] = useState(false);
 
   const refetchWeekly = useCallback(async () => {
     if (!user?.id) return;
@@ -557,28 +584,30 @@ export function ProfileRecordsSection() {
   );
 
   const rankedTemplate = useMemo(() => {
-    const sorted = [...templateRows].sort((a, b) => {
+    const sorted = [...templateRowsFiltered].sort((a, b) => {
       const ra = templateRatePct(a);
       const rb = templateRatePct(b);
       if (rb !== ra) return rb - ra;
       return a.sortOrder - b.sortOrder;
     });
     return sorted;
-  }, [templateRows]);
+  }, [templateRowsFiltered]);
 
   const rankedCustom = useMemo(() => {
-    return [...customRows].sort((a, b) => customRatePct(b) - customRatePct(a));
-  }, [customRows]);
+    return [...customRowsFiltered].sort(
+      (a, b) => customRatePct(b) - customRatePct(a),
+    );
+  }, [customRowsFiltered]);
 
   const rowPhotoSig = useMemo(
     () =>
       JSON.stringify({
         s: chartStart,
         e: chartEnd,
-        t: templateRows.map((r) => r.itemId),
-        c: customRows.map((r) => r.title),
+        t: templateRowsFiltered.map((r) => r.itemId),
+        c: customRowsFiltered.map((r) => r.title),
       }),
-    [chartStart, chartEnd, templateRows, customRows],
+    [chartStart, chartEnd, templateRowsFiltered, customRowsFiltered],
   );
 
   useEffect(() => {
@@ -588,7 +617,7 @@ export function ProfileRecordsSection() {
     void (async () => {
       const next = new Map<string, boolean>();
       await Promise.all([
-        ...templateRows.map(async (r) => {
+        ...templateRowsFiltered.map(async (r) => {
           const k = `t:${r.itemId}`;
           try {
             const s = await fetchProfileTemplateItemPhotoDatesSetForRange(
@@ -601,7 +630,7 @@ export function ProfileRecordsSection() {
             if (!cancelled) next.set(k, false);
           }
         }),
-        ...customRows.map(async (r) => {
+        ...customRowsFiltered.map(async (r) => {
           const k = `c:${r.title}`;
           try {
             const s = await fetchProfileCustomTitlePhotoDatesSetForRange(
@@ -620,7 +649,14 @@ export function ProfileRecordsSection() {
     return () => {
       cancelled = true;
     };
-  }, [mainTab, loadingList, effectiveBounds, rowPhotoSig, templateRows, customRows]);
+  }, [
+    mainTab,
+    loadingList,
+    effectiveBounds,
+    rowPhotoSig,
+    templateRowsFiltered,
+    customRowsFiltered,
+  ]);
 
   function applyPickerRange(): boolean {
     let s = pickerStart;
@@ -764,8 +800,29 @@ export function ProfileRecordsSection() {
 
   const closeDayDialog = useCallback(() => {
     setDayDialog(null);
+    setDlgDayNote("");
     void refetchWeekly();
   }, [refetchWeekly]);
+
+  useEffect(() => {
+    if (!dayDialog || !user?.id) return;
+    let cancelled = false;
+    setDlgDayNote("");
+    setDlgDayNoteLoading(true);
+    void fetchUserDayNote(user.id, dayDialog.date)
+      .then((n) => {
+        if (!cancelled) setDlgDayNote(n);
+      })
+      .catch(() => {
+        if (!cancelled) setDlgDayNote("");
+      })
+      .finally(() => {
+        if (!cancelled) setDlgDayNoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dayDialog?.date, user?.id]);
 
   const dayNavIdx =
     dayDialog != null ? dayNavDates.indexOf(dayDialog.date) : -1;
@@ -948,6 +1005,9 @@ export function ProfileRecordsSection() {
                 100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（本人）×
                 100%。
               </p>
+              <div className="mt-3">
+                <SdgFilterBar selected={sdgFilter} onChange={setSdgFilter} />
+              </div>
               <div className="mt-3 space-y-2">
                 <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
                   公版項目
@@ -1289,16 +1349,34 @@ export function ProfileRecordsSection() {
                 key={dayDialog.date}
                 selectedDate={dayDialog.date}
                 variant={dayDialog.mode === "view" ? "readonly" : "interactive"}
+                dayNoteControlled={{
+                  value: dlgDayNote,
+                  onChange: setDlgDayNote,
+                  readOnly: dayDialog.mode === "view",
+                  busyLoading: dlgDayNoteLoading,
+                }}
               />
             </div>
             {dayDialog.mode === "edit" ? (
               <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--color-muted)]/50 bg-[var(--color-surface)] px-3 py-3">
                 <button
                   type="button"
-                  onClick={closeDayDialog}
-                  className="rounded-full bg-[#849B6D] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                  disabled={dlgDayNoteLoading || dlgDayNoteSaving}
+                  onClick={() => {
+                    if (!user?.id) return;
+                    setDlgDayNoteSaving(true);
+                    void upsertUserDayNote({
+                      userId: user.id,
+                      date: dayDialog.date,
+                      note: dlgDayNote,
+                    })
+                      .then(() => closeDayDialog())
+                      .catch(() => {})
+                      .finally(() => setDlgDayNoteSaving(false));
+                  }}
+                  className="rounded-full bg-[#849B6D] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
                 >
-                  儲存並關閉
+                  {dlgDayNoteSaving ? "儲存中…" : "儲存並關閉"}
                 </button>
               </div>
             ) : null}

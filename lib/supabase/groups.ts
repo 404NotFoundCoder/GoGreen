@@ -94,7 +94,9 @@ export async function listPublicGroups() {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("groups")
-    .select("id, name, description, is_public, invite_code, created_at")
+    .select(
+      "id, name, description, is_public, invite_code, created_at, created_by",
+    )
     .eq("is_public", true)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -173,5 +175,38 @@ export async function leaveGroup(groupId: string, userId: string) {
 export async function deleteGroup(groupId: string) {
   const supabase = createClient();
   const { error } = await supabase.from("groups").delete().eq("id", groupId);
+  if (error) throw error;
+}
+
+export type GroupMemberPreviewRow = {
+  user_id: string;
+  nickname: string | null;
+  photo_url: string | null;
+};
+
+export async function fetchGroupMemberCount(groupId: string): Promise<number | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("rpc_group_member_count", {
+    p_group_id: groupId,
+  });
+  if (error) throw error;
+  return typeof data === "number" ? data : null;
+}
+
+export async function fetchGroupMembersPreview(groupId: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("rpc_group_members_preview", {
+    p_group_id: groupId,
+  });
+  if (error) throw error;
+  return (data ?? []) as GroupMemberPreviewRow[];
+}
+
+export async function ownerRemoveGroupMember(groupId: string, targetUserId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("rpc_owner_remove_group_member", {
+    p_group_id: groupId,
+    p_user_id: targetUserId,
+  });
   if (error) throw error;
 }

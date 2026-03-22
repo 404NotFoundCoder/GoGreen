@@ -48,7 +48,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {message ? (
         <div
-          className="pointer-events-none fixed inset-x-0 top-20 z-[100] flex justify-center px-4 lg:top-24"
+          className="pointer-events-none fixed inset-x-0 top-20 z-[2600] flex justify-center px-4 lg:top-24"
           aria-live="polite"
         >
           <div

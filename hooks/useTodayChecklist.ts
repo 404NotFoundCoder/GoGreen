@@ -12,18 +12,31 @@ import {
   deleteCustomItemById,
   getUserTemplateId,
   linkCustomItemToToday,
+  normalizeCheckinPhotoUrls,
   unlinkCustomItemFromToday,
   updateCustomItem as updateCustomItemApi,
+  appendCheckinPhotos,
+  removeCheckinPhotoAt,
   setCustomItemDone,
   setPublicItemDone,
-  uploadCheckinPhotoFile,
   type ChecklistItemRow,
   type CustomItemRow,
 } from "@/lib/supabase/checklist";
 import { fetchUserDailyStatsForDate } from "@/lib/supabase/stats";
+import {
+  fetchUserDayNote,
+  upsertUserDayNote,
+} from "@/lib/supabase/dayNote";
 import { getTodayString } from "@/lib/utils/date";
 import { useAuthContext } from "@/context/AuthContext";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+
+export type PhotoUploadUiState = {
+  key: string;
+  percent: number;
+  message: string;
+};
 
 function countDoneToday(
   items: ChecklistItemRow[],
@@ -51,7 +64,11 @@ function clampDateToToday(d: string): string {
   return d > t ? t : d;
 }
 
-export function useTodayChecklist(selectedDate: string) {
+export function useTodayChecklist(
+  selectedDate: string,
+  opts?: { loadDayNote?: boolean },
+) {
+  const loadDayNote = opts?.loadDayNote !== false;
   const { user, loading: authLoading } = useAuthContext();
   const date = clampDateToToday(selectedDate);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -61,15 +78,18 @@ export function useTodayChecklist(selectedDate: string) {
   const [checkinCustomIds, setCheckinCustomIds] = useState<Set<string>>(
     new Set(),
   );
-  const [photoByItemId, setPhotoByItemId] = useState<Record<string, string>>(
+  const [photosByItemId, setPhotosByItemId] = useState<Record<string, string[]>>(
     {},
   );
-  const [photoByCustomId, setPhotoByCustomId] = useState<
-    Record<string, string>
+  const [photosByCustomId, setPhotosByCustomId] = useState<
+    Record<string, string[]>
   >({});
   const [favoriteItems, setFavoriteItems] = useState<CustomItemRow[]>([]);
   const [pendingPhotoUploads, setPendingPhotoUploads] = useState<Set<string>>(
     () => new Set(),
+  );
+  const [photoUploadUi, setPhotoUploadUi] = useState<PhotoUploadUiState | null>(
+    null,
   );
   const [pendingUnlinks, setPendingUnlinks] = useState<Set<string>>(
     () => new Set(),
@@ -80,6 +100,8 @@ export function useTodayChecklist(selectedDate: string) {
   const [pendingUpdates, setPendingUpdates] = useState<Set<string>>(
     () => new Set(),
   );
+  const [dayNote, setDayNote] = useState("");
+  const [dayNoteSaving, setDayNoteSaving] = useState(false);
   const [stats, setStats] = useState<TodayStats>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -106,36 +128,39 @@ export function useTodayChecklist(selectedDate: string) {
       try {
         const tid = await getUserTemplateId(user.id);
         setTemplateId(tid);
-        const [list, checkins, customs, favs, st] = await Promise.all([
+        const [list, checkins, customs, favs, st, noteRow] = await Promise.all([
           fetchActiveChecklistItems(tid),
           fetchTodayCheckins(user.id, date),
           fetchTodayCustomRows(user.id, date),
           fetchFavoriteCustomItems(user.id),
           fetchUserDailyStatsForDate(user.id, date),
+          loadDayNote ? fetchUserDayNote(user.id, date) : Promise.resolve(""),
         ]);
         setItems(list);
         setCustomItems(customs as CustomItemRow[]);
         setFavoriteItems(favs as CustomItemRow[]);
         const itemDone = new Set<string>();
         const customDone = new Set<string>();
-        const pItem: Record<string, string> = {};
-        const pCustom: Record<string, string> = {};
+        const pItem: Record<string, string[]> = {};
+        const pCustom: Record<string, string[]> = {};
         for (const c of checkins) {
+          const urls = normalizeCheckinPhotoUrls(
+            c as { photo_url?: string | null; photo_urls?: unknown },
+          );
           if (c.item_id) {
             itemDone.add(c.item_id as string);
-            const u = c.photo_url as string | null;
-            if (u) pItem[c.item_id as string] = u;
+            if (urls.length) pItem[c.item_id as string] = urls;
           }
           if (c.custom_item_id) {
             customDone.add(c.custom_item_id as string);
-            const u = c.photo_url as string | null;
-            if (u) pCustom[c.custom_item_id as string] = u;
+            if (urls.length) pCustom[c.custom_item_id as string] = urls;
           }
         }
         setCheckinItemIds(itemDone);
         setCheckinCustomIds(customDone);
-        setPhotoByItemId(pItem);
-        setPhotoByCustomId(pCustom);
+        setPhotosByItemId(pItem);
+        setPhotosByCustomId(pCustom);
+        if (loadDayNote) setDayNote(noteRow);
         setStats(
           st
             ? {
@@ -156,8 +181,23 @@ export function useTodayChecklist(selectedDate: string) {
         }
       }
     },
-    [user, date],
+    [user, date, loadDayNote],
   );
+
+  const saveDayNote = async () => {
+    if (!user || !loadDayNote) return;
+    setDayNoteSaving(true);
+    try {
+      await upsertUserDayNote({
+        userId: user.id,
+        date,
+        note: dayNote,
+      });
+      await load({ silent: true });
+    } finally {
+      setDayNoteSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -377,28 +417,70 @@ export function useTodayChecklist(selectedDate: string) {
     }
   };
 
-  const uploadPhoto = async (args: {
+  const uploadPhotos = async (args: {
     itemId?: string;
     customItemId?: string;
-    file: File;
+    files: File[];
   }) => {
-    if (!user) return;
+    if (!user) throw new Error("請先登入後再上傳照片");
+    if (args.files.length === 0) {
+      throw new Error("請選擇至少一張圖片");
+    }
     const key = args.itemId ? `p:${args.itemId}` : `c:${args.customItemId}`;
-    setPendingPhotoUploads((prev) => new Set(prev).add(key));
+    flushSync(() => {
+      setPendingPhotoUploads((prev) => new Set(prev).add(key));
+      setPhotoUploadUi({ key, percent: 3, message: "準備上傳…" });
+    });
     try {
-      await uploadCheckinPhotoFile({
+      await appendCheckinPhotos({
         userId: user.id,
         date,
-        file: args.file,
+        files: args.files,
+        itemId: args.itemId,
+        customItemId: args.customItemId,
+        onProgress: (p) => {
+          setPhotoUploadUi({ key, percent: p.percent, message: p.message });
+        },
+      });
+      await load({ silent: true });
+    } finally {
+      flushSync(() => {
+        setPendingPhotoUploads((prev) => {
+          const n = new Set(prev);
+          n.delete(key);
+          return n;
+        });
+        setPhotoUploadUi(null);
+      });
+    }
+  };
+
+  const removePhotoAt = async (args: {
+    itemId?: string;
+    customItemId?: string;
+    index: number;
+  }) => {
+    if (!user) throw new Error("請先登入");
+    const key = args.itemId ? `p:${args.itemId}` : `c:${args.customItemId}`;
+    flushSync(() => {
+      setPendingPhotoUploads((prev) => new Set(prev).add(key));
+    });
+    try {
+      await removeCheckinPhotoAt({
+        userId: user.id,
+        date,
+        index: args.index,
         itemId: args.itemId,
         customItemId: args.customItemId,
       });
       await load({ silent: true });
     } finally {
-      setPendingPhotoUploads((prev) => {
-        const n = new Set(prev);
-        n.delete(key);
-        return n;
+      flushSync(() => {
+        setPendingPhotoUploads((prev) => {
+          const n = new Set(prev);
+          n.delete(key);
+          return n;
+        });
       });
     }
   };
@@ -430,10 +512,16 @@ export function useTodayChecklist(selectedDate: string) {
     unlinkCustomFromToday,
     deleteFavoriteCustom,
     updateCustomItem,
-    uploadPhoto,
+    uploadPhotos,
+    removePhotoAt,
+    photoUploadUi,
+    dayNote,
+    setDayNote,
+    saveDayNote,
+    dayNoteSaving,
     favoriteItems,
-    photoByItemId,
-    photoByCustomId,
+    photosByItemId,
+    photosByCustomId,
     pendingPhotoUploads,
     pendingUnlinks,
     pendingDeletes,

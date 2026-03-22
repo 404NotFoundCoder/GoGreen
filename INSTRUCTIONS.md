@@ -54,7 +54,7 @@
 | 資料庫 / 認證 | Supabase（PostgreSQL + Auth）                                                |
 | 狀態管理      | React Context + `hooks/`                                                     |
 | PWA           | `@ducanh2912/next-pwa`（見 [PWA 規範](#pwa-規範)）                           |
-| 儲存          | Supabase Storage（`checkin-photos`；已完成項目可上傳／檢視佐證 `[done]`）    |
+| 儲存          | Supabase Storage（`checkin-photos`；已完成項目可上傳最多 **10** 張／列佐證至 `photo_urls`，並保留 `photo_url` 相容 `[done]`） |
 | 部署          | Vercel（建議）                                                               |
 
 ### 為什麼選 Supabase 而非 Firebase
@@ -174,7 +174,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 | `/auth/callback` | Supabase OAuth callback：`code` 換取 session 成功則導向 `next`（預設 `/today`）；失敗或無 `code` 則 **`redirect('/?error=auth')`**。 |
 | `/today`         | 今日檢核（需登入）；可選 **`?date=yyyy-MM-dd`**（UTC+8 曆日，≤ 今日）由 **`TodayPageClient`** 讀取並餵 **`TodayChecklist`**／**`useTodayChecklist`** |
 | `/leaderboard`   | 排行榜：全體／群組內／各群間／個人（需登入） |
-| `/groups`        | 群組（需登入）                            |
+| `/groups`        | 群組（需登入）；**`GroupHub`**（見「群組」節：成員人數／名單、私人邀請碼、群主剔除） |
 | `/profile`       | 個人：`ProfileForm`（暱稱）；`ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileChartsSection`：**五卡**、**分數表＋SDG**、**`ProfileRecordsSection`**〔分頁：各項完成率／每週紀錄、填寫紀錄〕）（需登入） |
 
 **登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 **`redirect('/')`**（首頁）。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
@@ -183,8 +183,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 **對應程式：**
 
-- **Hooks（`hooks/`）**：`useTodayChecklist`（**參數**：選定曆日 `yyyy-MM-dd`）、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGlobalActionCompletionStats`、`useProfileActionCompletionStats`（個人頁各項完成率）、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`、`useProfile`（完整檔名見「分層職責說明」）
-- **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
+- **Hooks（`hooks/`）**：`useTodayChecklist`（**參數**：選定曆日 `yyyy-MM-dd`；**選項**：`loadDayNote?: boolean`，個人頁「填寫紀錄」內嵌時可關閉以改由父層載入備註）、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGlobalActionCompletionStats`、`useProfileActionCompletionStats`（個人頁各項完成率）、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`（含 **`removeMember`** 串接群主剔除 RPC）、`useProfile`（完整檔名見「分層職責說明」）
+- **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`dayNote.ts`（`user_daily_notes`）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
 
 ---
 
@@ -197,7 +197,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 完成約一半時頂部**深色膠囊** toast 滑入「🌱 已完成一半！繼續加油」（約 2.5s 後收起）；**全部完成**時：約 **280ms** 後以 **DOM 彩帶**（`confettiFall`，約 60 片）→ 約 **850ms** 後全螢幕慶祝 overlay（`rgba(233,245,219,0.95)`、**`Leaf` 圖示**、`fadeIn`／`bounceIn`／`slideUp`）；overlay 顯示後 **1500ms** 自動關閉，亦可按「太棒了」提前關閉；`prefers-reduced-motion: reduce` 時略過彩帶、直接顯示 overlay；**全完成慶祝（撒花＋overlay）僅在使用者本次勾選／取消後再勾選，剛好由「未全滿」變成「全滿」且 API 成功時觸發**（`fullCompletionCelebrationTick`）；**初次載入若已全完成**則不播放慶祝動畫，僅顯示清單下方「今日全部完成」內聯提示
 - `[done]` 頂部統計：進度條軌 `#CFD5BD`、填色 `#87986A`、高度 6px、`width` 過渡 **0.4s** `cubic-bezier(0.34, 1.56, 0.64, 1)`；今日得分數字 bump 動畫；連續天數 tier 徽章底色 `#FAEEDA`、字色 `#854F0B`；**無**右上角「⋯」選單（已移除）
 - `[done]` 支援 **`/today?date=yyyy-MM-dd`**（UTC+8 曆日、≤ 今日）：**`app/(app)/today/TodayPageClient.tsx`**（`Suspense` + `useSearchParams`）→ **`TodayChecklist`**／**`useTodayChecklist(selectedDate)`**
-- `[done]` 已完成項目可上傳佐證照片（檔案選擇）至 Storage，並寫入 `daily_checkins.photo_url`；可點縮圖或「檢視大圖」以 **`ImageLightbox`** 全螢幕瀏覽（Esc／點背景關閉）
+- `[done]` 已完成項目可上傳**佐證照片**（**`multiple`** 檔案選擇，**每公版／自訂列、單日最多 `MAX_CHECKIN_PHOTOS`（10）**）至 Storage，寫入 **`daily_checkins.photo_urls`（`text[]`）** 並維持 **`photo_url`** 為**首張** URL（舊資料與 RPC 相容）。實作：**`appendCheckinPhotos`**／**`removeCheckinPhotoAt`**、**`normalizeCheckinPhotoUrls`**（合併 legacy `photo_url` 與陣列）；若查無打卡列則 **INSERT** 一筆再寫入（避免僅 Storage 有檔、DB 未更新）。**`ChecklistStampCard`**／**`ChecklistRow`**：多張縮圖、刪單張、**`useId` + `label htmlFor` + `sr-only` input** 觸發選檔（**禁止**在 `onChange` 內先 `input.value=""` 再讀 `files`——`FileList` 與 input 連動會變空，Chrome／Edge 會靜默失敗）；**先 `Array.from(files)` 再清空**。**`useTodayChecklist`**：`flushSync` 立即顯示 **`pendingPhotoUploads`／`photoUploadUi`**（進度條＋階段文案）；**`TodayChecklist`** 以 **`uploadPhotosWithToast`** 包裝並 **`ToastProvider`** 成功／失敗提示。
+- `[done]` 可點縮圖以 **`ImageLightbox`** 全螢幕瀏覽（單張；Esc／點背景關閉）
+- `[done]` **每日備註**（與各項目打卡分開）：區塊在「自訂行動與常用收藏」**下方**；**`/today`** 可編輯並按「**儲存備註**」寫入 **`user_daily_notes`**（`upsert`）；有內容且儲存成功後可**收合**為預覽＋筆形鈕，點筆再展開編輯。**個人頁「填寫紀錄」**彈窗內 **`TodayChecklist`** 傳 **`dayNoteControlled`**：備註與底部「**儲存並關閉**」一併儲存，**不**顯示獨立「儲存備註」鈕。字數上限 **`MAX_DAY_NOTE_LENGTH`**（`constants/config.ts`）。刪除整日紀錄（**`clearUserCalendarDay`**）時一併刪除該日 **`user_daily_notes`**。
 - `[tbd]` 拖曳上傳佐證檔案（目前僅檔案選擇）
 - `[done]` **自訂行動與常用收藏**為**單一卡片**（`#gg-custom-favorites-section`）：頂部標題列說明 → 上段「新增項目」（`AddCustomForm` `embedded`）→ 分隔線 → 下段「常用收藏」（`FavoritesPanel` `embedded`、背景略區隔）；避免兩張獨立全寬卡片重複邊框
 - `[done]` 每日午夜重置（時區：UTC+8），重置時間定義為常數 `DAILY_RESET_HOUR`
@@ -235,6 +237,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` **每人僅一個群組**：已加入任一群組時，不可再**建立**、**加入**（公開／邀請碼）或**接受信箱邀請**；須先**退出**。資料庫：`group_members (user_id)` **唯一**（`migration 20260321200000_one_group_per_user.sql`）；RPC `join_public_group`／`join_private_group`／`respond_group_email_invite`（接受時）若已隸屬群組則 `already_in_group`
 - `[done]` **RLS／查詢**：`groups.g_select` 為 `is_public OR created_by = auth.uid() OR EXISTS (…group_members…)`（`migration 20260321160000`）；`group_members` 的 SELECT 僅 **`gm_select`**：`auth.uid() = user_id`。**勿**在遠端同時保留舊名 **`"members read"`**（子查詢 `group_members` 自參照）與 **`gm_select`**，否則仍會 **infinite recursion**（`migration 20260321170000` 刪除舊名）。**`listMyGroups`** 勿使用 PostgREST 嵌套 `group_members(..., groups(...))` 單一請求，改為兩次查詢後合併（見 **v0.10.20**）
 - `[done]` **操作回饋**：群組相關成功／錯誤以 **`ToastProvider`**（`context/ToastContext.tsx`）底部 toast 提示
+- `[done]` **`/groups` 頁（`GroupHub`）**：**我的群組**與**公開群組**卡片皆顯示 **`rpc_group_member_count`** 之人數；展開 **成員**列時以 **`rpc_group_members_preview`** 載入 **頭貼（`users.photo_url`）＋暱稱**。**公開群**：已登入者可查該群完整名單。**私人群**：僅**已是該群成員**者 RPC 回傳名單；未加入者不會在「公開群組」清單看到私人群，故與「未加入私人僅看人數」之產品語意一致。**群主**（`groups.created_by`）對**其他成員**可 **剔除**：**`RemoveGroupMemberDialog`** 確認，成功後 **`toast`**「已將『…』移出群組」；後端 **`rpc_owner_remove_group_member`**（**`20260322340000_group_members_ui_rpcs.sql`**）。前端 **`GroupMemberBlock`**、**`RemoveGroupMemberDialog`**、**`hooks/useGroups.removeMember`**、**`lib/supabase/groups`**（**`fetchGroupMemberCount`**／**`fetchGroupMembersPreview`**／**`ownerRemoveGroupMember`**）。錯誤碼中文對照見 **`lib/utils/groupErrors.ts`**（**`not_owner`**、**`cannot_remove_self`** 等）。
+- `[done]` **私人邀請碼**：**`InviteCodePanel`** 於「我的群組」私人群卡片**固定顯示** 6 碼與 **「複製邀請碼」**；建立私人群成功時 **自動 `clipboard.writeText`** 並 toast，且於「建立群組」區塊**下方**再顯示同一面板供複製。**公開群**無邀請碼，卡片內以短文說明請對方至「公開群組」清單加入。
 - `[未實作]` 創群時設定此群組的公版清單（可從系統預設複製後修改）；目前僅使用系統預設公版範本
 - `[done]` 群組間排名（**平均標準化分**等聚合）與 `/leaderboard`「各群間」視角（見「排行榜設計 → 群組 vs 群組」）；進階可改為純 SQL／RPC 對齊 `leaderboard_groups` view
 
@@ -350,8 +354,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
   - **期間列**：**今日／本週／本月／自訂** 四欄 **等寬** 同一膠囊列（**自訂**＝日曆圖示＋「自訂」＋ chevron **同一橫列**）。選 **自訂** 且已套用區間時，該欄為**整格淺綠**選中態（無「使用中」小徽章）。
   - **自訂區間**：點第四欄開啟 **`DateRangePickerPanel`**（雙月曆、**拖曳**選起訖；`components/ui/DateRangePickerPanel.tsx`）。面板為 **`absolute` 浮層**（錨在期間列容器內），**不推擠**下方完成率列表。套用後 **`useGlobalActionCompletionStats({ start, end })`**，密度圖版面依 **`resolveHeatmapLayoutForDateRange`**（短區間橫向日格、長區間 GitHub 週欄）。
   - 各列可顯示 **SDG 標籤**（RPC 回傳 `sdg_ids`）；須 **`20260322150000_action_completion_sdg_ids.sql`**。
-  - **佐證相機（綠格／列標）**：在選定區間內，若某日該公版項目或自訂標題之打卡列 **`daily_checkins.photo_url` 非空**，則該日密度格（且當日有完成人次時）右下角顯示 **相機圖示**；若區間內**任一日**有佐證，摺疊列標題旁顯示相機並附副標 **「含佐證」**。資料來源：公版項目 **`rpc_leaderboard_template_item_day_photo_dates`**（**`20260322320000_action_completion_photo_marks.sql`**）；自訂標題 **`rpc_leaderboard_custom_title_day_photo_dates`**（**`20260322170000_custom_title_day_photo_dates.sql`**；**`fetchCustomTitlePhotoDatesSetForRange`**）。未套用相關 migration 時前端多處 **`.catch` 空 Set**，頁面不崩潰但角標可能不準。
-  - 點密度圖格之彈窗：**完成者清單／照片牆**；佐證圖仍為 `daily_checkins.photo_url`。若已套用 **`20260322163000_leaderboard_cell_participants_avatar.sql`**（及群組版 **`rpc_group_*_cell_participants`**），RPC 另回傳 **`avatar_url`**（`users.photo_url`）供**清單與照片牆縮圖左上角**疊圖；**未套用時**前端仍相容，僅無頭像 URL、以首字代替。
+  - **SDG 篩選**：期間列**下方**為 **`SdgFilterBar`**（`components/ui/SdgFilterBar.tsx`）；以 **`Set<number>`** 選中 SDG id，**空集**＝不篩選。列表以 **`rowMatchesSdgFilter`**（`lib/utils/sdgFilter.ts`）過濾公版／自訂列之 **`sdg_ids`**。**個人頁**（**`ProfileRecordsSection`**）、**群組紀錄**（**`GroupRecordsSection`**）之各項完成率同構。
+  - **佐證相機（綠格／列標）**：在選定區間內，若某日該公版項目或自訂標題之打卡列 **有佐證**（**`checkin_has_evidence_photo(photo_url, photo_urls)`**：`photo_url` 非空白 **或** `photo_urls` 陣列非空），則該日密度格（且當日有完成人次時）右下角顯示 **相機圖示**；若區間內**任一日**有佐證，摺疊列標題旁顯示相機並附副標 **「含佐證」**。初版 RPC 僅查 **`photo_url`**（**`20260322320000`**／**`20260322170000`**）；**多張佐證**須再套用 **`20260324000000_multi_photos_day_notes.sql`**（覆寫上述佐證日 RPC，改呼叫 **`checkin_has_evidence_photo`**）。未套用相關 migration 時前端多處 **`.catch` 空 Set**，頁面不崩潰但角標可能不準。
+  - 點密度圖格之彈窗：**完成者清單／照片牆**；佐證縮圖以 **`photo_url` 為主**（多張時通常為首張；詳見打卡寫入邏輯）。若已套用 **`20260322163000_leaderboard_cell_participants_avatar.sql`**（及群組版 **`rpc_group_*_cell_participants`**），RPC 另回傳 **`avatar_url`**（`users.photo_url`）供**清單與照片牆縮圖左上角**疊圖；**未套用時**前端仍相容，僅無頭像 URL、以首字代替。
   - 基礎 migration：**`20260322123000_leaderboard_action_density_rpcs.sql`**；並見 **`20260322140000_resync_default_checklist.sql`**／**`20260322141000_custom_title_stats_list_days.sql`**／**`20260322142000_custom_title_stats_include_list_only.sql`**。
 - **行動完成率公式與「自訂 · 依標題彙總」**（區間＝該卡 **今日／本週／本月** 選擇，非頁首榜單期間）：
   - **公版**：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）× 100%；項目來自 `is_default` 範本。若 DB 與 seed 文案／筆數脫節（例如曾手動改表、`on conflict do nothing` 未覆寫），可執行 **`20260322140000_resync_default_checklist.sql`** 還原 10 筆 canonical 並收斂單一預設範本。
@@ -362,7 +367,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`（以 `group_members` **全體成員**為準，無打卡者仍列入 0 分）、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
 - 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）；**熱門行動**（第 1 名標題與期間內打卡列數）見上節 **「熱門行動統計卡」**、`rpc_group_hot_actions`（須 **`20260322180000_group_hot_actions_rpc.sql`**）
 - 圖表：**本群**每日**分數表**（折線，成員 **`raw_score` 按日加總**）、**本群** SDG 行動分布（`rpc_group_sdg_distribution`）**僅在子 tab「總加權」顯示**；圖表區第一卡目前為 **`bg-[var(--color-surface)]`**、SDG 卡為白底（與全體榜第一卡皆白底略異，可再統一）。**各成員完成項數橫條**（`GroupMemberCountBars`）仍於各子 tab 顯示 `[done]`（需 `20260321230100_group_sdg_distribution_rpc.sql`）
-- **群組紀錄**（分數表／SDG 圖**下方**、同樣僅「總加權」）：**`GroupRecordsSection`** — **各項完成率**（邏輯同全體榜但僅限本群成員；**`20260322310000_group_records_rpcs.sql`** 之 `rpc_group_default_template_item_stats`、`rpc_group_custom_title_stats`、日密度與 cell participants）；**佐證相機**與全體榜同構（綠格／列「含佐證」），RPC 見 **`20260322320000_action_completion_photo_marks.sql`**（`rpc_group_template_item_day_photo_dates`、`rpc_group_custom_title_day_photo_dates`；**`lib/supabase/groupRecords.ts`**）。**每週紀錄**唯讀（無填寫／編輯／刪除），表格列有打卡日與人數，點開以**置中日＋左右切換**瀏覽，其下依序顯示各成員當日清單（**`rpc_group_peer_day_snapshot`** + **`GroupPeerDayPanel`**，`ChecklistRow`／`ChecklistStampCard` 唯讀）。
+- **群組紀錄**（分數表／SDG 圖**下方**、同樣僅「總加權」）：**`GroupRecordsSection`** — **各項完成率**（邏輯同全體榜但僅限本群成員；**`20260322310000_group_records_rpcs.sql`** 之 `rpc_group_default_template_item_stats`、`rpc_group_custom_title_stats`、日密度與 cell participants）；**`SdgFilterBar`** 篩選與全體榜同構。**佐證相機**與全體榜同構（綠格／列「含佐證」；**`checkin_has_evidence_photo`** 須 **`20260324000000`**），RPC 見 **`20260322320000`**（初版）＋**`20260324000000`**（覆寫；**`lib/supabase/groupRecords.ts`**）。**每週紀錄**唯讀（無填寫／編輯／刪除），表格列有打卡日與人數，點開以**置中日＋左右切換**瀏覽，其下依序顯示各成員當日清單（**`rpc_group_peer_day_snapshot`** + **`GroupPeerDayPanel`**，`ChecklistRow`／`ChecklistStampCard` 唯讀）。
 - 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
 ### 群組 vs 群組 `[done]`
@@ -380,8 +385,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - **分頁**：**各項完成率**、**每週紀錄**；**填寫紀錄**按鈕（＋文字）開啟選日對話框（標題「填寫紀錄」、**去填寫** 進入該日編輯；日期欄可 **`showPicker()`** 整欄點開日曆；僅 **X** 關閉，**不可**點遮罩關閉）。
 - **統計區間**（與頁頂 `LeaderboardPeriodBar` **分開**）：今日／本週／本月／自訂；**`getActionCompletionDateBounds`**／**`resolveHeatmapLayoutForActionCompletion`**／**`resolveHeatmapLayoutForDateRange`** 與全體榜 **`GlobalActionCompletionSection`** 同構。
-- **各項完成率**：**`useProfileActionCompletionStats`**；RPC **`20260322200000_profile_action_completion_rpcs.sql`**（`rpc_profile_template_item_stats`、`rpc_profile_custom_title_stats`、日密度 `rpc_profile_*_day_density`，僅 **`auth.uid()`**）。展開列為**二元**密度（有打卡 **#849B6D**／無 **白**）；**佐證相機**與全體榜同構（有打卡且該日有佐證照片之格顯示相機、列上「含佐證」），須 **`20260322320000_action_completion_photo_marks.sql`**（`rpc_profile_template_item_day_photo_dates`、`rpc_profile_custom_title_day_photo_dates`；**勿**用全體榜自訂 RPC 查個人自訂）。密度區 **`overflow-y-visible`** 避免多餘直向捲軸。點格開「我的完成紀錄」modal（仍可點遮罩關閉，與日彈窗不同）。
-- **每週紀錄**：**`fetchUserDailyStatsInRange`** + **`fetchUserDayActivityExtrasInRange`**（`lib/supabase/checklist.ts`：自訂格數、自訂完成數、當日是否有佐證圖）；僅列 **`completed_count > 0`**。整列可點開 **檢視**；**編輯**／**刪除**（**`clearUserCalendarDay`**，確認後清空該日打卡與 `user_daily_custom_items` 連結）。**日彈窗**：內嵌 **`TodayChecklist`** + **`useTodayChecklist(日期)`**；**檢視**＝**`variant="readonly"`**（**`ChecklistStampCard`／`ChecklistRow`** **`readOnly`**：不灰隱、不可勾選，**可**檢視佐證縮圖與大圖）；**編輯**＝互動，底欄 **儲存並關閉**（關閉並 refetch 列表；勾選仍即時寫入 DB）。遮罩淡色 **`rgba(45,52,40,0.22)`**、**不可**點外關閉；標題列 **日期置中**，**上／下一天** 限目前紀錄區間（`chartStart`～`chartEnd`）。
+- **各項完成率**：**`useProfileActionCompletionStats`**；RPC **`20260322200000_profile_action_completion_rpcs.sql`**（`rpc_profile_template_item_stats`、`rpc_profile_custom_title_stats`、日密度 `rpc_profile_*_day_density`，僅 **`auth.uid()`**）。展開列為**二元**密度（有打卡 **#849B6D**／無 **白**）；**佐證相機**與全體榜同構（有打卡且該日 **`checkin_has_evidence_photo`** 為真之格顯示相機、列上「含佐證」），須 **`20260322320000`** 並建議 **`20260324000000`**（`photo_urls`）。**`SdgFilterBar`**＋**`rowMatchesSdgFilter`** 與全體榜同構。密度區 **`overflow-y-visible`** 避免多餘直向捲軸。點格開「我的完成紀錄」modal（仍可點遮罩關閉，與日彈窗不同）。
+- **每週紀錄**：**`fetchUserDailyStatsInRange`** + **`fetchUserDayActivityExtrasInRange`**（`lib/supabase/checklist.ts`：自訂格數、自訂完成數、當日是否有佐證圖）；僅列 **`completed_count > 0`**。整列可點開 **檢視**；**編輯**／**刪除**（**`clearUserCalendarDay`**，確認後清空該日打卡、`user_daily_custom_items` 連結與 **`user_daily_notes`**）。**日彈窗**：內嵌 **`TodayChecklist`** 並傳 **`dayNoteControlled`**（內部 **`useTodayChecklist`** 不自抓 **`user_daily_notes`**，等同 **`loadDayNote: false`**）；備註由父層狀態與底欄 **儲存並關閉** 呼叫 **`upsertUserDayNote`** 一併寫入（無獨立「儲存備註」鈕）；**檢視**＝**`variant="readonly"`**（**`ChecklistStampCard`／`ChecklistRow`** **`readOnly`**：不灰隱、不可勾選，**可**檢視佐證縮圖與大圖）；**編輯**＝互動。遮罩淡色 **`rgba(45,52,40,0.22)`**、**不可**點外關閉；標題列 **日期置中**，**上／下一天** 限目前紀錄區間（`chartStart`～`chartEnd`）。
 
 - **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間分數加總、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
 - 統計數字全部顯示**原始值**，不標準化（與榜單標準化分並存於不同區塊）
@@ -495,13 +500,13 @@ components/       → UI 元件，分功能型（可用 context）與純展示�
 hooks/            → 業務邏輯、資料操作、UI 狀態管理（見下「目前檔案」）
 context/          → 跨頁面共享的全域狀態（e.g. AuthContext、ToastContext）
 lib/supabase/     → Supabase 所有查詢與操作的唯一入口（見下「目前檔案」）
-lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `invite.ts`、`error.ts`、`groupErrors.ts`、`leaderboardPeriod.ts`、`leaderboard.ts`）
+lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `invite.ts`、`error.ts`、`groupErrors.ts`、`leaderboardPeriod.ts`、`leaderboard.ts`、`sdgFilter.ts`）
 constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
 ```
 
 **`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGlobalLeaderboardCharts.ts`、`useGlobalActionCompletionStats.ts`、`useProfileActionCompletionStats.ts`、`useGroupMemberLeaderboard.ts`、`useGroupsLeaderboard.ts`、`usePersonalLeaderboard.ts`、`useGroupLeaderboardCharts.ts`、`useGroupPeriodStats.ts`、`useGroups.ts`、`useProfile.ts`、`useProfileNickname.ts`
 
-**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳、**`fetchUserDayActivityExtrasInRange`**／**`clearUserCalendarDay`** 等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardActionHeatmap.ts`、`leaderboardAnalytics.ts`
+**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／**多張**佐證 **`appendCheckinPhotos`**／**`removeCheckinPhotoAt`**、**`fetchUserDayActivityExtrasInRange`**／**`clearUserCalendarDay`** 等）、`dayNote.ts`（**`user_daily_notes`**）、`stats.ts`、`users.ts`、`groups.ts`（群組 CRUD／加入退出／**`fetchGroupMemberCount`**／**`fetchGroupMembersPreview`**／**`ownerRemoveGroupMember`** 等）、`leaderboard.ts`、`leaderboardActionHeatmap.ts`、`leaderboardAnalytics.ts`
 
 **元件分兩種：**
 
@@ -509,7 +514,7 @@ constants/        → 全域常數、資料定義（config、scoring、sdg、che
 負責把資料接進來再渲染。
 
 純展示型元件（UI Component）通常放在 `components/ui/`，所有資料由 props 傳入，
-不依賴任何 context，可在任何地方複用。例：`Skeleton`、`SdgTag`、`SdgTagStrip`、`ImageLightbox`（佐證大圖）、`ConfirmDialog`（確認移除／刪除）。功能型表單／對話框亦可置於 `components/checklist/`（如 `EditCustomItemDialog`）。
+不依賴任何 context，可在任何地方複用。例：`Skeleton`、`SdgTag`、`SdgTagStrip`、`SdgFilterBar`（各項完成率 SDG 多選篩選）、`ImageLightbox`（佐證大圖）、`ConfirmDialog`（確認移除／刪除）。功能型表單／對話框亦可置於 `components/checklist/`（如 `EditCustomItemDialog`）。
 
 > 新增資料夾或模組時，請在 [Changelog](#changelog) 說明其用途，
 > 讓後人不用翻 code 就知道每個資料夾在做什麼。
@@ -544,6 +549,8 @@ export const LEADERBOARD_LIMIT = 20; // 排行榜主列表每頁筆數（可翻�
 export const MAX_CUSTOM_ITEMS = 10; // 每日可加入今日清單的自訂項目上限
 export const MAX_FAVORITE_ITEMS = 20; // 常用清單收藏上限（獨立於今日自訂上限）
 export const CUSTOM_ITEM_MAX_LENGTH = 40; // 自訂項目文字長度上限
+export const MAX_CHECKIN_PHOTOS = 10; // 單一公版／自訂列、單日佐證張數上限
+export const MAX_DAY_NOTE_LENGTH = 2000; // 每日備註字數上限（user_daily_notes）
 export const DAILY_RESET_HOUR = 0; // 每日重置時間（UTC+8 的 0 點）
 export const INVITE_CODE_LENGTH = 6; // 群組邀請碼長度
 ```
@@ -674,7 +681,8 @@ create table daily_checkins (
   date             date not null,                    -- e.g. 2026-03-20
   item_id          uuid references checklist_items(id),
   custom_item_id   uuid references custom_items(id),
-  photo_url        text,                             -- Supabase Storage URL
+  photo_url        text,                             -- 首張佐證 URL（與舊版／部分 UI 相容）
+  photo_urls       text[],                          -- 多張佐證 URL（見 migration 20260324000000；空或 null 表示僅用 photo_url）
   checked_at       timestamptz default now(),
   constraint daily_checkins_one_item
     check (
@@ -691,6 +699,15 @@ create table user_daily_custom_items (
   date           date not null,
   custom_item_id uuid references custom_items(id) on delete cascade,
   primary key (user_id, date, custom_item_id)
+);
+
+-- 使用者每日備註（與各項目打卡分開；RLS：僅本人讀寫）
+create table user_daily_notes (
+  user_id    uuid not null references users(id) on delete cascade,
+  date       date not null,
+  note       text not null default '',
+  updated_at timestamptz not null default now(),
+  primary key (user_id, date)
 );
 
 -- 使用者每日統計（冗餘存儲，加速排行榜查詢）
@@ -775,7 +792,9 @@ group by g.id, g.name, g.is_public;
 | `20260322163000_leaderboard_cell_participants_avatar.sql` | `rpc_leaderboard_*_cell_participants` 增 **`avatar_url`**（`users.photo_url`）；**`handle_new_user`** 併寫 Google **`picture`**（選用；完成者頭像與佐證 `photo_url` 分欄） |
 | `20260322310000_group_records_rpcs.sql` | 群組內完成率／熱力／完成者名單／**`rpc_group_peer_day_snapshot`**／**`rpc_group_photo_dates_in_range`**（皆 **`grant … to authenticated`**；呼叫者須為該群成員） |
 | `20260322170000_custom_title_day_photo_dates.sql` | 全體榜自訂標題：**`rpc_leaderboard_custom_title_day_photo_dates`**（**`grant … to anon, authenticated`**）；與公版項目佐證日 RPC 分檔，部署時兩者皆須存在，熱力圖／列標「含佐證」才完整 |
-| `20260322320000_action_completion_photo_marks.sql` | 各項完成率「**佐證日**」查詢（`daily_checkins.photo_url` 非空之曆日）：全體公版 **`rpc_leaderboard_template_item_day_photo_dates`**（**`grant … to anon, authenticated`**）；個人 **`rpc_profile_template_item_day_photo_dates`**、**`rpc_profile_custom_title_day_photo_dates`**（**僅** `auth.uid()`）；群組 **`rpc_group_template_item_day_photo_dates`**、**`rpc_group_custom_title_day_photo_dates`**（**僅**該群成員之打卡；呼叫者須為該群成員）。供熱力圖格角標與摺疊列「含佐證」；前端 **`lib/supabase/leaderboardActionHeatmap.ts`**、**`groupRecords.ts`** |
+| `20260322320000_action_completion_photo_marks.sql` | 各項完成率「**佐證日**」查詢（初版僅 **`daily_checkins.photo_url` 非空**）：全體公版 **`rpc_leaderboard_template_item_day_photo_dates`**（**`grant … to anon, authenticated`**）；個人／群組同名系列。供熱力圖格角標與摺疊列「含佐證」；前端 **`lib/supabase/leaderboardActionHeatmap.ts`**、**`groupRecords.ts`**。**多張佐證**須由下列檔覆寫 RPC |
+| `20260324000000_multi_photos_day_notes.sql` | **`daily_checkins.photo_urls`**（`text[]`）；**`checkin_has_evidence_photo`**；**`user_daily_notes`** 表與 RLS（**`user_daily_notes_*`**）；覆寫佐證日 RPC（全體／個人／群組）與 **`rpc_group_photo_dates_in_range`**，改以 **`checkin_has_evidence_photo(photo_url, photo_urls)`** 判斷佐證。前端 **`appendCheckinPhotos`**／**`dayNote.ts`** |
+| `20260322340000_group_members_ui_rpcs.sql` | **`/groups` 成員 UI**：**`rpc_group_member_count`**（公開群任何人可查人數；私人僅**該群成員**可查，否則 `null`）；**`rpc_group_members_preview`**（公開群任何人可查**頭貼＋暱稱**；私人僅成員可查）；**`rpc_owner_remove_group_member`**（僅 **`groups.created_by`** 可刪除**他人**之 `group_members` 列，不可剔除自己）。皆 **`grant … to authenticated`**；見 **`GroupHub`**／**`GroupMemberBlock`**／**`lib/supabase/groups.ts`** |
 
 前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`、`lib/supabase/groupRecords.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
 
@@ -783,7 +802,7 @@ group by g.id, g.name, g.is_public;
 
 專案提供 **`supabase/scripts/wipe_and_reseed.sql`**，用於在**不刪表、不動 RPC／函式／trigger**的前提下，清空 **`public` 業務表資料列**並重新寫入 **SDG（17 筆）** 與 **系統預設範本 + 10 筆 canonical 公版**（語意與 **`20260321120000_sdgs_tag_colors.sql`**、**`20260322140000_resync_default_checklist.sql`** 對齊）。
 
-**涵蓋表**（與 migrations 內 `public` 業務表一致）：`daily_checkins`、`user_daily_stats`、`user_daily_custom_items`、`push_subscriptions`、`group_invitations`、`group_members`、`groups`、`custom_items`、`checklist_items`、`checklist_templates`、`users`、`sdgs`。若日後 migration **新增** `public` 表，須同步把該表補進腳本內 **`TRUNCATE`** 清單。
+**涵蓋表**（與 migrations 內 `public` 業務表一致）：`daily_checkins`、`user_daily_stats`、`user_daily_custom_items`、`user_daily_notes`（**`20260324000000`** 起）、`push_subscriptions`、`group_invitations`、`group_members`、`groups`、`custom_items`、`checklist_items`、`checklist_templates`、`users`、`sdgs`。若日後 migration **新增** `public` 表，須同步把該表補進 **`supabase/scripts/wipe_and_reseed.sql`** 之 **`TRUNCATE`** 清單。
 
 **建議執行方式（雲端專案）**
 
@@ -872,10 +891,10 @@ create policy "template owner delete" on checklist_items for delete using (
 
 bucket 名稱：`checkin-photos`，建立時勾選 **Public bucket**。
 
-上傳路徑規則：`{user_id}/{日期}_{item_id 或 custom_item_id}.{jpg|png}`（實作見 `uploadCheckinPhotoFile`），例如：
+上傳路徑規則：`{user_id}/{日期}_{item_id 或 custom_item_id}_{uuid}.{jpg|png}`（同一列多張時 **uuid** 區分檔名；實作見 `uploadCheckinPhotoFile`），例如：
 
 ```
-abc-123-uid/2026-03-21_item-456.jpg
+abc-123-uid/2026-03-21_item-456_a1b2c3d4.jpg
 ```
 
 第一層資料夾固定為 user_id，Policy 據此限制每人只能操作自己的資料夾。
@@ -1329,6 +1348,19 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-24] v0.10.55 — 多張佐證、每日備註、SDG 篩選與本文件對齊
+
+- `[FEAT]` **`daily_checkins.photo_urls`**、**`user_daily_notes`**；**`checkin_has_evidence_photo`**；佐證日 RPC 覆寫（**`20260324000000_multi_photos_day_notes.sql`**）；**`appendCheckinPhotos`**／**`removeCheckinPhotoAt`**、**`dayNote.ts`**；**`TodayChecklist`** 備註區與 **`useTodayChecklist`**（**`flushSync`**、**`photoUploadUi`**、toast）；**`ChecklistStampCard`** 選檔 **先 `Array.from(files)` 再清空 input**
+- `[FEAT]` 全體／個人／群組各項完成率：**`SdgFilterBar`**＋**`rowMatchesSdgFilter`**（**`lib/utils/sdgFilter.ts`**）
+- `[CONST]` **`MAX_CHECKIN_PHOTOS`**、**`MAX_DAY_NOTE_LENGTH`**（`constants/config.ts`）
+- `[DOCS]` **本文件**：技術棧 Storage、主畫面今日檢核、個人／群組紀錄、**`GlobalActionCompletionSection`**、資料表摘要、**RPC 表**、**Storage** 路徑、**分層職責**、**常數**、**`wipe_and_reseed` 涵蓋表**；**`wipe_and_reseed.sql`** 補 **`user_daily_notes` TRUNCATE**
+
+### [2026-03-23] v0.10.54 — 群組頁：成員名單／人數 RPC、群主剔除、邀請碼面板與文件
+
+- `[FEAT]` **`GroupHub`**／**`GroupMemberBlock`**／**`RemoveGroupMemberDialog`**／**`InviteCodePanel`**：公開／我的群組人數與成員列、群主剔除（彈窗＋toast）、私人邀請碼固定列與複製、建立私人後剪貼簿與下方面板；**`listPublicGroups`** 補 **`created_by`**
+- `[DB]` **`20260322340000_group_members_ui_rpcs.sql`**：**`rpc_group_member_count`**、**`rpc_group_members_preview`**、**`rpc_owner_remove_group_member`**
+- `[DOCS]` **本文件**：路由 **`/groups`**、**「群組」**節、**RPC 表**；**`groupErrors`** 剔除相關鍵名對照
 
 ### [2026-03-23] v0.10.53 — 各項完成率佐證相機（綠格／列標）文件與 RPC 表
 

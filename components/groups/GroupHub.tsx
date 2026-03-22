@@ -1,6 +1,7 @@
 "use client";
 
 import { DeleteGroupDialog } from "@/components/groups/DeleteGroupDialog";
+import { GroupMemberBlock } from "@/components/groups/GroupMemberBlock";
 import { EmailChipsInput } from "@/components/ui/EmailChipsInput";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { INVITE_CODE_LENGTH } from "@/constants/config";
@@ -9,6 +10,36 @@ import { useGroups } from "@/hooks/useGroups";
 import { translateGroupRpcError } from "@/lib/utils/groupErrors";
 import { ChevronDown, Lock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+/** 私人群邀請碼：固定顯示＋複製（不依賴收合） */
+function InviteCodePanel({ code }: { code: string }) {
+  const toast = useToast();
+  return (
+    <div className="mt-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-gradient-to-br from-[var(--color-primary-light)]/55 via-[var(--color-white)] to-[var(--color-surface)] px-4 py-3 shadow-[0_2px_8px_rgba(45,52,40,0.06)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-ink-secondary)]">
+            邀請碼（私人）
+          </p>
+          <p className="mt-1 break-all font-mono text-lg font-bold tracking-[0.28em] text-[var(--color-ink)] sm:text-xl">
+            {code}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="min-h-[44px] shrink-0 rounded-full bg-[var(--color-primary-strong)] px-6 py-2.5 text-sm font-semibold text-[var(--color-white)] shadow-sm transition hover:opacity-95 active:scale-[0.98]"
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(code)
+              .then(() => toast.show("已複製邀請碼"));
+          }}
+        >
+          複製邀請碼
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type NestedGroup = {
   id: string;
@@ -40,6 +71,7 @@ export function GroupHub() {
     sendEmailInvites,
     respondInvite,
     deleteGroup,
+    removeMember,
   } = useGroups();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
@@ -60,6 +92,10 @@ export function GroupHub() {
   /** 已達一人一群時，預設收合鎖定區塊，僅顯示鎖頭＋提示 */
   const [lockedCreateExpanded, setLockedCreateExpanded] = useState(false);
   const [lockedInviteExpanded, setLockedInviteExpanded] = useState(false);
+  /** 建立私人後顯示於「建立群組」下方之邀請碼區塊（與以邀請碼加入區之 toggle 同構） */
+  const [createdPrivateCode, setCreatedPrivateCode] = useState<string | null>(
+    null,
+  );
 
   const atGroupLimit = mine.length >= 1;
 
@@ -74,10 +110,7 @@ export function GroupHub() {
     if (!userId) return [];
     return mine
       .map(parseNestedGroup)
-      .filter(
-        (g): g is NestedGroup =>
-          g !== null && g.created_by === userId,
-      );
+      .filter((g): g is NestedGroup => g !== null && g.created_by === userId);
   }, [mine, userId]);
 
   const joinedGroupIds = useMemo(() => {
@@ -93,10 +126,7 @@ export function GroupHub() {
     if (!inviteGroupId && createdGroups.length > 0) {
       setInviteGroupId(createdGroups[0]!.id);
     }
-    if (
-      inviteGroupId &&
-      !createdGroups.some((g) => g.id === inviteGroupId)
-    ) {
+    if (inviteGroupId && !createdGroups.some((g) => g.id === inviteGroupId)) {
       setInviteGroupId(createdGroups[0]?.id ?? "");
     }
   }, [createdGroups, inviteGroupId]);
@@ -114,8 +144,11 @@ export function GroupHub() {
       setName("");
       setDesc("");
       if (!isPublic && inviteCode) {
-        toast.show(`已建立私人群組，邀請碼：${inviteCode}`);
+        setCreatedPrivateCode(inviteCode);
+        void navigator.clipboard.writeText(inviteCode).catch(() => {});
+        toast.show("已建立私人群組，邀請碼已複製到剪貼簿");
       } else {
+        setCreatedPrivateCode(null);
         toast.show("已建立群組");
       }
     } catch (e) {
@@ -135,9 +168,7 @@ export function GroupHub() {
   }
 
   if (error) {
-    return (
-      <p className="text-[var(--color-ink)]">{error.message}</p>
-    );
+    return <p className="text-[var(--color-ink)]">{error.message}</p>;
   }
 
   return (
@@ -155,7 +186,8 @@ export function GroupHub() {
             待處理的群組邀請
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-secondary)]">
-            僅在<strong>登入信箱與受邀信箱一致</strong>時可加入。你可選擇接受或拒絕。
+            僅在<strong>登入信箱與受邀信箱一致</strong>
+            時可加入。你可選擇接受或拒絕。
           </p>
           <ul className="mt-3 space-y-3">
             {pendingInvites.map((inv) => (
@@ -185,9 +217,7 @@ export function GroupHub() {
                         .then(() => {
                           toast.show(`已加入「${inv.group_name}」`);
                         })
-                        .catch((e) =>
-                          toast.show(translateGroupRpcError(e)),
-                        )
+                        .catch((e) => toast.show(translateGroupRpcError(e)))
                         .finally(() => setRespondBusyId(null));
                     }}
                   >
@@ -201,9 +231,7 @@ export function GroupHub() {
                       setRespondBusyId(inv.id);
                       void respondInvite(inv.id, false)
                         .then(() => toast.show("已拒絕邀請"))
-                        .catch((e) =>
-                          toast.show(translateGroupRpcError(e)),
-                        )
+                        .catch((e) => toast.show(translateGroupRpcError(e)))
                         .finally(() => setRespondBusyId(null));
                     }}
                   >
@@ -266,24 +294,29 @@ export function GroupHub() {
             </h2>
             <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-secondary)]">
               <strong>公開</strong>：任何人都可在下方清單搜尋並加入。
-              <strong> 私人</strong>：需 6 碼邀請碼或以信箱邀請；不會出現在公開清單。
+              <strong> 私人</strong>：需 6
+              碼邀請碼或以信箱邀請；不會出現在公開清單。
             </p>
           </>
         )}
 
-        {(!atGroupLimit || lockedCreateExpanded) ? (
+        {!atGroupLimit || lockedCreateExpanded ? (
           <div
             id="locked-create-form"
-            className={atGroupLimit ? "mt-4 border-t-[0.5px] border-[var(--color-muted)]/60 pt-4" : ""}
+            className={
+              atGroupLimit
+                ? "mt-4 border-t-[0.5px] border-[var(--color-muted)]/60 pt-4"
+                : ""
+            }
             role="region"
             aria-labelledby={atGroupLimit ? "locked-create-toggle" : undefined}
           >
             {atGroupLimit ? (
               <p className="text-sm leading-relaxed text-[var(--color-ink-secondary)]">
                 <strong>公開</strong>：任何人都可在下方清單搜尋並加入。
-                <strong> 私人</strong>：需 6 碼邀請碼或以信箱邀請；不會出現在公開清單。
-                {" "}
-                你已加入群組時<strong>無法</strong>再建立新群組。
+                <strong> 私人</strong>：需 6
+                碼邀請碼或以信箱邀請；不會出現在公開清單。 你已加入群組時
+                <strong>無法</strong>再建立新群組。
               </p>
             ) : null}
             <input
@@ -377,17 +410,20 @@ export function GroupHub() {
           </>
         )}
 
-        {(!atGroupLimit || lockedInviteExpanded) ? (
+        {!atGroupLimit || lockedInviteExpanded ? (
           <div
             id="locked-invite-form"
-            className={atGroupLimit ? "mt-4 border-t-[0.5px] border-[var(--color-muted)]/60 pt-4" : ""}
+            className={
+              atGroupLimit
+                ? "mt-4 border-t-[0.5px] border-[var(--color-muted)]/60 pt-4"
+                : ""
+            }
             role="region"
             aria-labelledby={atGroupLimit ? "locked-invite-toggle" : undefined}
           >
             {atGroupLimit ? (
               <p className="text-sm text-[var(--color-ink-secondary)]">
-                請向建立者索取 {INVITE_CODE_LENGTH} 碼英數邀請碼。
-                {" "}
+                請向建立者索取 {INVITE_CODE_LENGTH} 碼英數邀請碼。{" "}
                 你已加入群組時無法再以邀請碼加入其他群組。
               </p>
             ) : null}
@@ -486,22 +522,15 @@ export function GroupHub() {
             <button
               type="button"
               disabled={
-                inviteBusy ||
-                !inviteGroupId ||
-                inviteEmails.length === 0
+                inviteBusy || !inviteGroupId || inviteEmails.length === 0
               }
               onClick={() => {
                 setInviteBusy(true);
                 setInviteDetail(null);
-                void sendEmailInvites(
-                  inviteGroupId,
-                  inviteEmails.join("\n"),
-                )
+                void sendEmailInvites(inviteGroupId, inviteEmails.join("\n"))
                   .then((r) => {
                     if (r.sent > 0) {
-                      toast.show(
-                        `已送出 ${r.sent} 筆邀請`,
-                      );
+                      toast.show(`已送出 ${r.sent} 筆邀請`);
                     }
                     if (r.failed.length > 0) {
                       toast.show(
@@ -520,9 +549,7 @@ export function GroupHub() {
                       setInviteEmails([]);
                     }
                   })
-                  .catch((e) =>
-                    toast.show(translateGroupRpcError(e)),
-                  )
+                  .catch((e) => toast.show(translateGroupRpcError(e)))
                   .finally(() => setInviteBusy(false));
               }}
               className="min-h-[44px] w-full rounded-full bg-[var(--color-primary-strong)] px-5 py-2.5 text-sm font-medium text-[var(--color-white)] disabled:opacity-50 sm:w-auto"
@@ -551,53 +578,68 @@ export function GroupHub() {
             {mine.map((row) => {
               const g = parseNestedGroup(row);
               if (!g) return null;
-              const isCreator =
-                Boolean(userId) && g.created_by === userId;
+              const isCreator = Boolean(userId) && g.created_by === userId;
               return (
                 <li
                   key={row.group_id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3"
+                  className="flex flex-col gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3"
                 >
-                  <div>
-                    <p className="font-medium text-[var(--color-ink)]">
-                      {g.name}
-                    </p>
-                    <p className="text-xs text-[var(--color-ink-secondary)]">
-                      {isCreator ? "建立者 · " : null}
-                      {g.is_public ? "公開" : "私人"}
-                      {!g.is_public && g.invite_code
-                        ? ` · 邀請碼 ${g.invite_code}`
-                        : ""}
-                    </p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-[var(--color-ink)]">
+                        {g.name}
+                      </p>
+                      <p className="text-xs text-[var(--color-ink-secondary)]">
+                        {isCreator ? "建立者 · " : null}
+                        {g.is_public ? "公開" : "私人"}
+                      </p>
+                      {g.is_public ? (
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+                          公開群組沒有邀請碼；請告知對方群組名稱，對方可在本頁下方「公開群組」清單加入。
+                        </p>
+                      ) : g.invite_code ? (
+                        <InviteCodePanel code={g.invite_code} />
+                      ) : null}
+                      {userId ? (
+                        <GroupMemberBlock
+                          groupId={g.id}
+                          isOwner={isCreator}
+                          viewerUserId={userId}
+                          onRemoveMember={removeMember}
+                        />
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2 self-start">
+                      {isCreator ? (
+                        <button
+                          type="button"
+                          className="min-h-[44px] rounded-full border-[0.5px] border-[#b45309]/40 bg-[#fff7ed] px-4 text-sm font-medium text-[#9a3412] hover:bg-[#ffedd5]"
+                          onClick={() =>
+                            setDeleteTarget({ id: g.id, name: g.name })
+                          }
+                        >
+                          刪除群組
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={pending === `leave:${g.id}`}
+                          className="min-h-[44px] rounded-full px-3 text-sm text-red-800 disabled:opacity-50"
+                          onClick={() => {
+                            setPending(`leave:${g.id}`);
+                            void leave(g.id)
+                              .then(() => toast.show("已退出群組"))
+                              .catch((e) =>
+                                toast.show(translateGroupRpcError(e)),
+                              )
+                              .finally(() => setPending(null));
+                          }}
+                        >
+                          {pending === `leave:${g.id}` ? "退出中…" : "退出"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {isCreator ? (
-                    <button
-                      type="button"
-                      className="min-h-[44px] rounded-full border-[0.5px] border-[#b45309]/40 bg-[#fff7ed] px-4 text-sm font-medium text-[#9a3412] hover:bg-[#ffedd5]"
-                      onClick={() =>
-                        setDeleteTarget({ id: g.id, name: g.name })
-                      }
-                    >
-                      刪除群組
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={pending === `leave:${g.id}`}
-                      className="min-h-[44px] rounded-full px-3 text-sm text-red-800 disabled:opacity-50"
-                      onClick={() => {
-                        setPending(`leave:${g.id}`);
-                        void leave(g.id)
-                          .then(() => toast.show("已退出群組"))
-                          .catch((e) =>
-                            toast.show(translateGroupRpcError(e)),
-                          )
-                          .finally(() => setPending(null));
-                      }}
-                    >
-                      {pending === `leave:${g.id}` ? "退出中…" : "退出"}
-                    </button>
-                  )}
                 </li>
               );
             })}
@@ -617,55 +659,70 @@ export function GroupHub() {
           <ul className="mt-3 space-y-2">
             {publicList.map((g) => {
               const alreadyJoined = joinedGroupIds.has(g.id);
-              const blocked =
-                atGroupLimit && !alreadyJoined;
+              const blocked = atGroupLimit && !alreadyJoined;
+              const isOwnerPublic =
+                Boolean(userId) &&
+                g.created_by != null &&
+                g.created_by === userId;
               return (
                 <li
                   key={g.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3"
+                  className="flex flex-col gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3"
                 >
-                  <div>
-                    <p className="font-medium text-[var(--color-ink)]">{g.name}</p>
-                    {g.description ? (
-                      <p className="text-sm text-[var(--color-ink-secondary)]">
-                        {g.description}
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-[var(--color-ink)]">
+                        {g.name}
                       </p>
-                    ) : null}
+                      {g.description ? (
+                        <p className="text-sm text-[var(--color-ink-secondary)]">
+                          {g.description}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      {alreadyJoined ? (
+                        <span
+                          className="inline-flex min-h-[44px] items-center rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] px-4 py-2 text-sm font-medium text-[var(--color-ink-secondary)]"
+                          aria-label="已加入此群組"
+                        >
+                          已加入
+                        </span>
+                      ) : blocked ? (
+                        <span
+                          className="inline-flex min-h-[44px] max-w-[11rem] items-center text-right text-sm leading-snug text-[var(--color-ink-secondary)]"
+                          title="每人僅能隸屬一個群組"
+                        >
+                          已加入其他群組
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={pending === `join:${g.id}`}
+                          className="min-h-[44px] rounded-full bg-[var(--color-primary-pale)] px-4 py-2 text-sm font-medium text-[var(--color-primary-dark)] disabled:opacity-50"
+                          onClick={() => {
+                            setPending(`join:${g.id}`);
+                            void joinPublic(g.id)
+                              .then(() => toast.show(`已加入「${g.name}」`))
+                              .catch((e) =>
+                                toast.show(translateGroupRpcError(e)),
+                              )
+                              .finally(() => setPending(null));
+                          }}
+                        >
+                          {pending === `join:${g.id}` ? "加入中…" : "加入"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {alreadyJoined ? (
-                    <span
-                      className="inline-flex min-h-[44px] items-center rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] px-4 py-2 text-sm font-medium text-[var(--color-ink-secondary)]"
-                      aria-label="已加入此群組"
-                    >
-                      已加入
-                    </span>
-                  ) : blocked ? (
-                    <span
-                      className="inline-flex min-h-[44px] max-w-[11rem] items-center text-right text-sm leading-snug text-[var(--color-ink-secondary)]"
-                      title="每人僅能隸屬一個群組"
-                    >
-                      已加入其他群組
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={pending === `join:${g.id}`}
-                      className="min-h-[44px] rounded-full bg-[var(--color-primary-pale)] px-4 py-2 text-sm font-medium text-[var(--color-primary-dark)] disabled:opacity-50"
-                      onClick={() => {
-                        setPending(`join:${g.id}`);
-                        void joinPublic(g.id)
-                          .then(() =>
-                            toast.show(`已加入「${g.name}」`),
-                          )
-                          .catch((e) =>
-                            toast.show(translateGroupRpcError(e)),
-                          )
-                          .finally(() => setPending(null));
-                      }}
-                    >
-                      {pending === `join:${g.id}` ? "加入中…" : "加入"}
-                    </button>
-                  )}
+                  {userId ? (
+                    <GroupMemberBlock
+                      groupId={g.id}
+                      isOwner={isOwnerPublic}
+                      viewerUserId={userId}
+                      onRemoveMember={removeMember}
+                    />
+                  ) : null}
                 </li>
               );
             })}

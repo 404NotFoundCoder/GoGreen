@@ -9,9 +9,11 @@ type Props = {
   onToggle: () => void;
   disabled?: boolean;
   sdgShowLabel?: boolean;
-  photoUrl?: string | null;
-  onUploadPhoto?: (file: File) => void;
+  photoUrls?: string[];
+  onAddPhotos?: (files: File[]) => void | Promise<void>;
+  onRemovePhoto?: (index: number) => void;
   photoUploadBusy?: boolean;
+  photoUploadProgress?: { percent: number; message: string } | null;
   readOnly?: boolean;
 };
 
@@ -21,9 +23,11 @@ export function ChecklistRow({
   onToggle,
   disabled,
   sdgShowLabel,
-  photoUrl,
-  onUploadPhoto,
+  photoUrls = [],
+  onAddPhotos,
+  onRemovePhoto,
   photoUploadBusy,
+  photoUploadProgress = null,
   readOnly,
 }: Props) {
   return (
@@ -36,9 +40,11 @@ export function ChecklistRow({
       description={item.description}
       sdgIds={item.sdg_ids ?? undefined}
       sdgShowLabel={sdgShowLabel}
-      photoUrl={photoUrl}
-      onUploadPhoto={onUploadPhoto}
+      photoUrls={photoUrls}
+      onAddPhotos={onAddPhotos}
+      onRemovePhoto={onRemovePhoto}
       photoUploadBusy={photoUploadBusy}
+      photoUploadProgress={photoUploadProgress}
     />
   );
 }

@@ -27,8 +27,10 @@ import {
 } from "@/lib/utils/heatmapLayout";
 import { eachDateStringInRange, getTodayString } from "@/lib/utils/date";
 import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
+import { SdgFilterBar } from "@/components/ui/SdgFilterBar";
 import { SdgTagStrip } from "@/components/ui/SdgTagStrip";
 import { Calendar, Camera, ChevronDown, X } from "lucide-react";
+import { rowMatchesSdgFilter } from "@/lib/utils/sdgFilter";
 import { getISODay, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { TIMEZONE } from "@/constants/config";
@@ -362,6 +364,7 @@ export function GlobalActionCompletionSection() {
     () => getActionCompletionDateBounds("week").end,
   );
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [sdgFilter, setSdgFilter] = useState<Set<number>>(() => new Set());
   const periodBarRef = useRef<HTMLDivElement>(null);
   const [rangePanelOpen, setRangePanelOpen] = useState(false);
 
@@ -394,6 +397,26 @@ export function GlobalActionCompletionSection() {
   useEffect(() => {
     setExpanded(null);
   }, [chartStart, chartEnd]);
+
+  useEffect(() => {
+    setExpanded(null);
+  }, [sdgFilter]);
+
+  const templateRowsFiltered = useMemo(
+    () =>
+      templateRows.filter((r) =>
+        rowMatchesSdgFilter(r.sdgIds, sdgFilter),
+      ),
+    [templateRows, sdgFilter],
+  );
+
+  const customRowsFiltered = useMemo(
+    () =>
+      customRows.filter((r) =>
+        rowMatchesSdgFilter(r.sdgIds, sdgFilter),
+      ),
+    [customRows, sdgFilter],
+  );
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
   const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
     () => new Set(),
@@ -501,28 +524,30 @@ export function GlobalActionCompletionSection() {
   }, []);
 
   const rankedTemplate = useMemo(() => {
-    const sorted = [...templateRows].sort((a, b) => {
+    const sorted = [...templateRowsFiltered].sort((a, b) => {
       const ra = templateRatePct(a);
       const rb = templateRatePct(b);
       if (rb !== ra) return rb - ra;
       return a.sortOrder - b.sortOrder;
     });
     return sorted;
-  }, [templateRows]);
+  }, [templateRowsFiltered]);
 
   const rankedCustom = useMemo(() => {
-    return [...customRows].sort((a, b) => customRatePct(b) - customRatePct(a));
-  }, [customRows]);
+    return [...customRowsFiltered].sort(
+      (a, b) => customRatePct(b) - customRatePct(a),
+    );
+  }, [customRowsFiltered]);
 
   const rowPhotoSig = useMemo(
     () =>
       JSON.stringify({
         s: chartStart,
         e: chartEnd,
-        t: templateRows.map((r) => r.itemId),
-        c: customRows.map((r) => r.title),
+        t: templateRowsFiltered.map((r) => r.itemId),
+        c: customRowsFiltered.map((r) => r.title),
       }),
-    [chartStart, chartEnd, templateRows, customRows],
+    [chartStart, chartEnd, templateRowsFiltered, customRowsFiltered],
   );
 
   useEffect(() => {
@@ -532,7 +557,7 @@ export function GlobalActionCompletionSection() {
     void (async () => {
       const next = new Map<string, boolean>();
       await Promise.all([
-        ...templateRows.map(async (r) => {
+        ...templateRowsFiltered.map(async (r) => {
           const k = `t:${r.itemId}`;
           try {
             const s = await fetchTemplateItemPhotoDatesSetForRange(
@@ -545,7 +570,7 @@ export function GlobalActionCompletionSection() {
             if (!cancelled) next.set(k, false);
           }
         }),
-        ...customRows.map(async (r) => {
+        ...customRowsFiltered.map(async (r) => {
           const k = `c:${r.title}`;
           try {
             const s = await fetchCustomTitlePhotoDatesSetForRange(
@@ -564,7 +589,13 @@ export function GlobalActionCompletionSection() {
     return () => {
       cancelled = true;
     };
-  }, [loadingList, effectiveBounds, rowPhotoSig, templateRows, customRows]);
+  }, [
+    loadingList,
+    effectiveBounds,
+    rowPhotoSig,
+    templateRowsFiltered,
+    customRowsFiltered,
+  ]);
 
   function applyPickerRange(): boolean {
     let s = pickerStart;
@@ -823,6 +854,9 @@ export function GlobalActionCompletionSection() {
         ）。公版：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）×
         100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（依標題彙總）× 100%。
       </p>
+      <div className="mt-3">
+        <SdgFilterBar selected={sdgFilter} onChange={setSdgFilter} />
+      </div>
       <div className="mt-3 space-y-2">
         <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
           公版項目

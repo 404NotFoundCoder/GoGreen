@@ -2,9 +2,11 @@
 
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { SdgTag } from "@/components/ui/SdgTag";
-import { Leaf, Pencil, Trash2, ZoomIn } from "lucide-react";
+import { MAX_CHECKIN_PHOTOS } from "@/constants/config";
+import { Leaf, Pencil, Trash2, X, ZoomIn } from "lucide-react";
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -78,10 +80,13 @@ type Props = {
   sdgIds?: number[];
   /** SDG 標籤是否顯示中文標籤（預設顯示） */
   sdgShowLabel?: boolean;
-  /** 已完成時可上傳佐證照片 */
-  photoUrl?: string | null;
-  onUploadPhoto?: (file: File) => void;
+  /** 已完成時可上傳佐證（最多 MAX_CHECKIN_PHOTOS） */
+  photoUrls?: string[];
+  onAddPhotos?: (files: File[]) => void | Promise<void>;
+  onRemovePhoto?: (index: number) => void;
   photoUploadBusy?: boolean;
+  /** 與 photoUploadBusy 併用：顯示百分比與階段說明 */
+  photoUploadProgress?: { percent: number; message: string } | null;
   /** 自訂項目：從「今日」移除（不刪除收藏本體） */
   onRequestRemoveFromToday?: () => void;
   removeFromTodayPending?: boolean;
@@ -101,9 +106,11 @@ export function ChecklistStampCard({
   metaLine,
   sdgIds,
   sdgShowLabel = true,
-  photoUrl,
-  onUploadPhoto,
+  photoUrls = [],
+  onAddPhotos,
+  onRemovePhoto,
   photoUploadBusy,
+  photoUploadProgress,
   onRequestRemoveFromToday,
   removeFromTodayPending,
   onRequestEdit,
@@ -112,8 +119,10 @@ export function ChecklistStampCard({
 }: Props) {
   const cardRef = useRef<HTMLButtonElement>(null);
   const stampZoneRef = useRef<HTMLSpanElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  /** 已選檔、父層尚未進入 pending 前的瞬間，避免「完全沒回饋」 */
+  const [localPicking, setLocalPicking] = useState(false);
+  const fileInputId = useId();
   const [stamping, setStamping] = useState(false);
   const [userStamped, setUserStamped] = useState(false);
   const [strikeReady, setStrikeReady] = useState(false);
@@ -150,8 +159,21 @@ export function ChecklistStampCard({
   };
 
   const showPhotoRow = Boolean(
-    done && (onUploadPhoto || photoUrl),
+    done && (onAddPhotos || photoUrls.length > 0),
   );
+  const canAddMore =
+    Boolean(onAddPhotos) && photoUrls.length < MAX_CHECKIN_PHOTOS;
+
+  const showUploadProgress =
+    photoUploadBusy ||
+    localPicking ||
+    (photoUploadProgress != null && photoUploadProgress.percent > 0);
+  const progressPct =
+    photoUploadProgress?.percent ??
+    (photoUploadBusy ? 6 : localPicking ? 14 : 0);
+  const progressMsg =
+    photoUploadProgress?.message ??
+    (photoUploadBusy ? "處理中…" : localPicking ? "準備上傳…" : "");
 
   return (
     <div className="overflow-visible rounded-[14px] border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)]">
@@ -261,59 +283,139 @@ export function ChecklistStampCard({
     </div>
 
     {showPhotoRow ? (
-      <div className="flex flex-wrap items-center gap-2 border-t-[0.5px] border-[var(--color-muted)] px-4 py-2.5">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          aria-label="選擇佐證照片"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f && onUploadPhoto) void onUploadPhoto(f);
-          }}
-        />
-        {photoUrl ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setLightboxOpen(true)}
-              className="relative shrink-0 overflow-hidden rounded-lg border-[0.5px] border-[var(--color-muted)] ring-[var(--color-primary-mid)] focus-visible:ring-2 focus-visible:outline-none"
-              aria-label="檢視大圖"
-            >
-              <img
-                src={photoUrl}
-                alt=""
-                className="h-14 w-14 object-cover"
-              />
-              <span className="absolute inset-0 flex items-center justify-center bg-[rgba(45,52,40,0.35)] opacity-0 transition-opacity hover:opacity-100">
-                <ZoomIn className="h-6 w-6 text-white drop-shadow" aria-hidden />
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setLightboxOpen(true)}
-              className="min-h-[40px] rounded-full border-[0.5px] border-[var(--color-primary-strong)] bg-[var(--color-primary-pale)] px-3 py-1.5 text-xs font-medium text-[var(--color-primary-dark)]"
-            >
-              檢視大圖
-            </button>
-            <ImageLightbox
-              src={photoUrl}
-              open={lightboxOpen}
-              onClose={() => setLightboxOpen(false)}
-            />
-          </>
+      <div className="border-t-[0.5px] border-[var(--color-muted)] px-4 py-2.5">
+        <div className="flex flex-wrap items-start gap-2">
+          {photoUrls.map((url, idx) => (
+            <div key={`${url}-${idx}`} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setLightboxSrc(url)}
+                className="relative block overflow-hidden rounded-lg border-[0.5px] border-[var(--color-muted)] ring-[var(--color-primary-mid)] focus-visible:ring-2 focus-visible:outline-none"
+                aria-label={`檢視第 ${idx + 1} 張`}
+              >
+                <img src={url} alt="" className="h-14 w-14 object-cover" />
+                <span className="absolute inset-0 flex items-center justify-center bg-[rgba(45,52,40,0.35)] opacity-0 transition-opacity hover:opacity-100">
+                  <ZoomIn
+                    className="h-6 w-6 text-white drop-shadow"
+                    aria-hidden
+                  />
+                </span>
+              </button>
+              {onRemovePhoto && !readOnly ? (
+                <button
+                  type="button"
+                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-[var(--color-muted)] bg-[var(--color-white)] text-[var(--color-ink-secondary)] shadow hover:bg-red-50 hover:text-red-800"
+                  aria-label="移除此張"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onRemovePhoto(idx);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        {lightboxSrc ? (
+          <ImageLightbox
+            src={lightboxSrc}
+            open
+            onClose={() => setLightboxSrc(null)}
+          />
         ) : null}
-        {onUploadPhoto ? (
-        <button
-          type="button"
-          disabled={photoUploadBusy}
-          onClick={() => fileInputRef.current?.click()}
-          className="min-h-[40px] rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-bg)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] disabled:opacity-50"
-        >
-          {photoUploadBusy ? "上傳中…" : photoUrl ? "更換照片" : "上傳佐證照片"}
-        </button>
+        {showUploadProgress ? (
+          <div
+            className="mt-2 space-y-1.5"
+            role="status"
+            aria-live="polite"
+            aria-busy={photoUploadBusy}
+          >
+            <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-muted)]/40">
+              <div
+                className="h-full rounded-full bg-[#849B6D] shadow-sm transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${Math.min(100, Math.max(2, progressPct))}%`,
+                }}
+              />
+            </div>
+            <p className="text-[11px] font-medium leading-snug text-[var(--color-ink-secondary)]">
+              {progressMsg}
+            </p>
+          </div>
+        ) : null}
+        {canAddMore ? (
+          <div className="mt-2 w-full sm:w-auto">
+            <input
+              id={fileInputId}
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={readOnly || photoUploadBusy || localPicking}
+              className="sr-only"
+              aria-label="選擇佐證照片"
+              onChange={(e) => {
+                const input = e.target;
+                const raw = input.files;
+                if (!raw?.length) {
+                  input.value = "";
+                  return;
+                }
+                /**
+                 * 不可先清空 value 再讀取 list：`FileList` 與 input 連動，
+                 * 清空後長度變 0，會靜默 return（Windows／Chrome 常見）。
+                 */
+                if (!onAddPhotos) {
+                  console.warn(
+                    "[GoGreen] 佐證照：未設定上傳回呼（onAddPhotos）。請確認項目已完成打卡且非唯讀。",
+                  );
+                  input.value = "";
+                  return;
+                }
+                const room = MAX_CHECKIN_PHOTOS - photoUrls.length;
+                if (room <= 0) {
+                  console.warn(
+                    "[GoGreen] 佐證照：已達張數上限，略過此次選檔。",
+                  );
+                  input.value = "";
+                  return;
+                }
+                const files = Array.from(raw).slice(0, room);
+                input.value = "";
+                setLocalPicking(true);
+                void (async () => {
+                  try {
+                    await Promise.resolve(onAddPhotos(files));
+                  } catch (err) {
+                    console.error("[GoGreen] 佐證照上傳流程錯誤:", err);
+                  } finally {
+                    setLocalPicking(false);
+                  }
+                })();
+              }}
+            />
+            <label
+              htmlFor={fileInputId}
+              className={[
+                "flex min-h-[44px] w-full cursor-pointer items-center justify-center rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-bg)] px-4 py-2 text-center text-xs font-medium text-[var(--color-ink)] sm:inline-flex sm:w-auto",
+                readOnly || photoUploadBusy || localPicking
+                  ? "pointer-events-none cursor-default opacity-55"
+                  : "",
+              ].join(" ")}
+            >
+              {photoUploadBusy || localPicking
+                ? "上傳中…"
+                : photoUrls.length > 0
+                  ? `新增照片（${photoUrls.length}/${MAX_CHECKIN_PHOTOS}）`
+                  : "上傳佐證照片"}
+            </label>
+          </div>
+        ) : null}
+        {photoUrls.length > 0 && !canAddMore && !readOnly ? (
+          <p className="mt-1 text-[10px] text-[var(--color-ink-secondary)]">
+            已達 {MAX_CHECKIN_PHOTOS} 張上限
+          </p>
         ) : null}
       </div>
     ) : null}

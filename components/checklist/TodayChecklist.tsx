@@ -8,17 +8,39 @@ import { FavoritesPanel } from "@/components/checklist/FavoritesPanel";
 import type { CustomItemRow } from "@/lib/supabase/checklist";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { MAX_DAY_NOTE_LENGTH } from "@/constants/config";
 import { getStreakTierBonus } from "@/constants/scoring";
+import { useToast } from "@/context/ToastContext";
 import { useTodayChecklist } from "@/hooks/useTodayChecklist";
 import { getTodayString } from "@/lib/utils/date";
-import { Flame, Leaf } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Flame, Leaf, Pencil } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+function formatClientError(e: unknown, fallback: string): string {
+  if (e instanceof Error && e.message.trim()) return e.message;
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  return fallback;
+}
 
 type TodayChecklistProps = {
   /** 預設為今日；可為歷史日（UTC+8 `yyyy-MM-dd`） */
   selectedDate?: string;
   /** `readonly`：檢視用，隱藏自訂／收藏區且不可勾選 */
   variant?: "interactive" | "readonly";
+  /**
+   * 個人頁「填寫紀錄」彈窗：備註由父層持有，不顯示「儲存備註」；
+   * 與底部「儲存並關閉」一併寫入。
+   */
+  dayNoteControlled?: {
+    value: string;
+    onChange: (v: string) => void;
+    readOnly?: boolean;
+    /** 備註自伺服器載入中時暫停編輯 */
+    busyLoading?: boolean;
+  };
 };
 
 function BouncyNumber({ value }: { value: number }) {
@@ -73,6 +95,7 @@ function spawnDomConfetti() {
 export function TodayChecklist({
   selectedDate: selectedDateProp,
   variant = "interactive",
+  dayNoteControlled,
 }: TodayChecklistProps = {}) {
   const selectedDate = selectedDateProp ?? getTodayString();
   const readonly = variant === "readonly";
@@ -92,11 +115,17 @@ export function TodayChecklist({
     unlinkCustomFromToday,
     deleteFavoriteCustom,
     updateCustomItem,
-    uploadPhoto,
+    uploadPhotos,
+    removePhotoAt,
     favoriteItems,
-    photoByItemId,
-    photoByCustomId,
+    photosByItemId,
+    photosByCustomId,
+    dayNote,
+    setDayNote,
+    saveDayNote,
+    dayNoteSaving,
     pendingPhotoUploads,
+    photoUploadUi,
     pendingUnlinks,
     pendingDeletes,
     pendingUpdates,
@@ -106,7 +135,74 @@ export function TodayChecklist({
     date,
     pendingToggles,
     fullCompletionCelebrationTick,
-  } = useTodayChecklist(selectedDate);
+  } = useTodayChecklist(selectedDate, {
+    loadDayNote: dayNoteControlled == null,
+  });
+
+  const toast = useToast();
+  /** 僅獨立「今日」頁：有已存備註時可收合，點筆再展開編輯 */
+  const [dayNoteExpanded, setDayNoteExpanded] = useState(true);
+  const dayNoteInitForDateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    dayNoteInitForDateRef.current = null;
+  }, [date]);
+
+  useEffect(() => {
+    if (dayNoteControlled) return;
+    if (loading) return;
+    if (dayNoteInitForDateRef.current === date) return;
+    dayNoteInitForDateRef.current = date;
+    setDayNoteExpanded(dayNote.trim().length === 0);
+  }, [loading, date, dayNote, dayNoteControlled]);
+
+  const handleSaveDayNote = useCallback(async () => {
+    const trimmed = dayNote.trim();
+    try {
+      await saveDayNote();
+      toast.show("已儲存備註");
+      setDayNoteExpanded(trimmed.length === 0);
+    } catch (e) {
+      toast.show(
+        e instanceof Error ? e.message : "備註儲存失敗，請稍後再試",
+      );
+    }
+  }, [saveDayNote, toast, dayNote]);
+
+  const uploadPhotosWithToast = useCallback(
+    async (args: {
+      itemId?: string;
+      customItemId?: string;
+      files: File[];
+    }) => {
+      try {
+        await uploadPhotos(args);
+        toast.show("已上傳佐證照片");
+      } catch (e) {
+        toast.show(
+          formatClientError(e, "佐證照片上傳失敗，請稍後再試"),
+        );
+      }
+    },
+    [uploadPhotos, toast],
+  );
+
+  const removePhotoWithToast = useCallback(
+    async (args: {
+      itemId?: string;
+      customItemId?: string;
+      index: number;
+    }) => {
+      try {
+        await removePhotoAt(args);
+      } catch (e) {
+        toast.show(
+          formatClientError(e, "移除照片失敗，請稍後再試"),
+        );
+      }
+    },
+    [removePhotoAt, toast],
+  );
 
   const [showCelebrateOverlay, setShowCelebrateOverlay] = useState(false);
   const halfToastShown = useRef(false);
@@ -374,14 +470,28 @@ export function TodayChecklist({
                   readonly || pendingToggles.has(`p:${item.id}`)
                 }
                 onToggle={() => void togglePublic(item.id)}
-                photoUrl={photoByItemId[item.id] ?? null}
-                onUploadPhoto={
+                photoUrls={photosByItemId[item.id] ?? []}
+                onAddPhotos={
                   !readonly && checkinItemIds.has(item.id)
-                    ? (file) =>
-                        void uploadPhoto({ itemId: item.id, file })
+                    ? (files) =>
+                        void uploadPhotosWithToast({ itemId: item.id, files })
+                    : undefined
+                }
+                onRemovePhoto={
+                  !readonly && checkinItemIds.has(item.id)
+                    ? (index) =>
+                        void removePhotoWithToast({ itemId: item.id, index })
                     : undefined
                 }
                 photoUploadBusy={pendingPhotoUploads.has(`p:${item.id}`)}
+                photoUploadProgress={
+                  photoUploadUi?.key === `p:${item.id}`
+                    ? {
+                        percent: photoUploadUi.percent,
+                        message: photoUploadUi.message,
+                      }
+                    : null
+                }
               />
             </div>
           ))}
@@ -401,14 +511,34 @@ export function TodayChecklist({
                   </span>
                 }
                 sdgIds={item.sdg_ids ?? undefined}
-                photoUrl={photoByCustomId[item.id] ?? null}
-                onUploadPhoto={
+                photoUrls={photosByCustomId[item.id] ?? []}
+                onAddPhotos={
                   !readonly && checkinCustomIds.has(item.id)
-                    ? (file) =>
-                        void uploadPhoto({ customItemId: item.id, file })
+                    ? (files) =>
+                        void uploadPhotosWithToast({
+                          customItemId: item.id,
+                          files,
+                        })
+                    : undefined
+                }
+                onRemovePhoto={
+                  !readonly && checkinCustomIds.has(item.id)
+                    ? (index) =>
+                        void removePhotoWithToast({
+                          customItemId: item.id,
+                          index,
+                        })
                     : undefined
                 }
                 photoUploadBusy={pendingPhotoUploads.has(`c:${item.id}`)}
+                photoUploadProgress={
+                  photoUploadUi?.key === `c:${item.id}`
+                    ? {
+                        percent: photoUploadUi.percent,
+                        message: photoUploadUi.message,
+                      }
+                    : null
+                }
                 onRequestRemoveFromToday={
                   readonly
                     ? undefined
@@ -477,6 +607,105 @@ export function TodayChecklist({
           </div>
         </div>
       </section>
+      ) : null}
+
+      {dayNoteControlled != null || !readonly ? (
+        <section
+          className="overflow-hidden rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)]"
+          aria-label="每日備註"
+        >
+          {dayNoteControlled == null &&
+          !dayNoteExpanded &&
+          dayNote.trim().length > 0 ? (
+            <>
+              <div className="flex items-start justify-between gap-3 border-b-[0.5px] border-[var(--color-muted)] bg-[var(--color-bg)]/50 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-semibold text-[var(--color-ink)]">
+                    每日備註
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+                    已儲存備註；點右側筆形圖示可編輯。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDayNoteExpanded(true)}
+                  className="shrink-0 rounded-full p-2.5 text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary-dark)]"
+                  aria-label="編輯每日備註"
+                >
+                  <Pencil className="h-5 w-5" strokeWidth={2} />
+                </button>
+              </div>
+              <div className="p-4">
+                <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-ink)]">
+                  {dayNote}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="border-b-[0.5px] border-[var(--color-muted)] bg-[var(--color-bg)]/50 px-4 py-3">
+                <h2 className="text-base font-semibold text-[var(--color-ink)]">
+                  每日備註
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+                  {dayNoteControlled?.readOnly
+                    ? "僅供檢視。"
+                    : dayNoteControlled?.busyLoading
+                      ? "備註載入中…"
+                      : dayNoteControlled
+                        ? "與當日打卡分開儲存；編輯完成後請使用下方「儲存並關閉」。"
+                        : "記錄當日心得或補充說明，與各項目打卡分開儲存。"}
+                </p>
+              </div>
+              <div className="p-4">
+                <label className="sr-only" htmlFor="gg-day-note">
+                  備註內容
+                </label>
+                <textarea
+                  id="gg-day-note"
+                  value={
+                    dayNoteControlled
+                      ? dayNoteControlled.value
+                      : dayNote
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value.slice(0, MAX_DAY_NOTE_LENGTH);
+                    if (dayNoteControlled) dayNoteControlled.onChange(v);
+                    else setDayNote(v);
+                  }}
+                  readOnly={dayNoteControlled?.readOnly}
+                  disabled={
+                    Boolean(dayNoteControlled?.readOnly) ||
+                    Boolean(dayNoteControlled?.busyLoading) ||
+                    (!dayNoteControlled && readonly)
+                  }
+                  rows={4}
+                  maxLength={MAX_DAY_NOTE_LENGTH}
+                  placeholder="選填，例如今日整體心得、臨時狀況…"
+                  className="w-full resize-y rounded-xl border border-[var(--color-muted)] bg-[var(--color-white)] px-3 py-2.5 text-sm text-[var(--color-ink)] placeholder:text-[var(--color-subtle)] focus:border-[var(--color-primary-mid)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-light)] disabled:cursor-not-allowed disabled:bg-[var(--color-bg)]"
+                />
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-[var(--color-ink-secondary)]">
+                    {(dayNoteControlled ? dayNoteControlled.value : dayNote)
+                      .length}
+                    /{MAX_DAY_NOTE_LENGTH}
+                  </span>
+                  {!dayNoteControlled ? (
+                    <button
+                      type="button"
+                      className="min-h-[40px] shrink-0 rounded-full bg-[#849B6D] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
+                      disabled={dayNoteSaving}
+                      onClick={() => void handleSaveDayNote()}
+                    >
+                      {dayNoteSaving ? "儲存中…" : "儲存備註"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
       ) : null}
     </div>
   );

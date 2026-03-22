@@ -13,6 +13,8 @@ export function translateGroupRpcError(e: unknown): string {
     ["no_email_in_session", "無法取得登入信箱，請確認以 Google 帳號登入"],
     ["not_public_or_missing", "找不到公開群組或無法加入"],
     ["already_in_group", "每人只能加入一個群組；請先退出目前群組再操作"],
+    ["not_owner", "僅群主可剔除成員"],
+    ["cannot_remove_self", "無法剔除自己，請使用退出群組"],
   ];
   const lower = raw.toLowerCase();
   for (const [k, v] of pairs) {

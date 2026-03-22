@@ -163,7 +163,11 @@ export function GroupPeerDayPanel({ groupId, peerUserId, date }: Props) {
                   readOnly
                   disabled
                   onToggle={() => {}}
-                  photoUrl={snap.photoByItemId[item.id] ?? null}
+                  photoUrls={
+                    snap.photoByItemId[item.id]
+                      ? [snap.photoByItemId[item.id]]
+                      : []
+                  }
                 />
               </div>
             ))}
@@ -181,7 +185,11 @@ export function GroupPeerDayPanel({ groupId, peerUserId, date }: Props) {
                     </span>
                   }
                   sdgIds={item.sdg_ids ?? undefined}
-                  photoUrl={snap.photoByCustomId[item.id] ?? null}
+                  photoUrls={
+                    snap.photoByCustomId[item.id]
+                      ? [snap.photoByCustomId[item.id]]
+                      : []
+                  }
                 />
               </div>
             ))}

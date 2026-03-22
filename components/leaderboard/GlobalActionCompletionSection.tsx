@@ -1,14 +1,15 @@
 "use client";
 
+import { ActionCompletionParticipantEvidence } from "@/components/leaderboard/ActionCompletionParticipantEvidence";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   customRatePct,
   fetchCustomTitleCellParticipants,
-  fetchCustomTitleDayDensityMapForRange,
   fetchCustomTitlePhotoDatesSetForRange,
+  fetchLeaderboardCustomTitleExpandForRange,
+  fetchLeaderboardTemplateItemExpandForRange,
   fetchTemplateItemCellParticipants,
-  fetchTemplateItemDayDensityMapForRange,
   fetchTemplateItemPhotoDatesSetForRange,
   templateRatePct,
   type CellParticipant,
@@ -30,6 +31,13 @@ import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
 import { SdgFilterBar } from "@/components/ui/SdgFilterBar";
 import { SdgTagStrip } from "@/components/ui/SdgTagStrip";
 import { Calendar, Camera, ChevronDown, X } from "lucide-react";
+import {
+  cloneExpandDensity,
+  expandDensityCacheKey,
+  snapshotExpandDensity,
+  type ExpandDensitySnapshot,
+} from "@/lib/utils/actionCompletionExpandCache";
+import { mapWithConcurrency } from "@/lib/utils/mapWithConcurrency";
 import { rowMatchesSdgFilter } from "@/lib/utils/sdgFilter";
 import { getISODay, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
@@ -43,6 +51,8 @@ import {
   useRef,
   useState,
 } from "react";
+
+const ROW_PHOTO_RPC_CONCURRENCY = 8;
 
 const ACTION_COMPLETION_PERIODS: {
   id: ActionCompletionPeriod;
@@ -390,8 +400,13 @@ export function GlobalActionCompletionSection() {
     return resolveHeatmapLayoutForActionCompletion(actionPeriod, chartEnd);
   }, [rangeMode, actionPeriod, chartStart, chartEnd]);
 
-  const { templateRows, customRows, loadingList, listError } =
-    useGlobalActionCompletionStats(effectiveBounds);
+  const {
+    templateRows,
+    customRows,
+    loadingList,
+    listError,
+    listSilentEpoch,
+  } = useGlobalActionCompletionStats(effectiveBounds);
 
   const [expanded, setExpanded] = useState<RowKey | null>(null);
   useEffect(() => {
@@ -417,6 +432,16 @@ export function GlobalActionCompletionSection() {
       ),
     [customRows, sdgFilter],
   );
+
+  const completionRowsRef = useRef({
+    templateRowsFiltered,
+    customRowsFiltered,
+  });
+  completionRowsRef.current = {
+    templateRowsFiltered,
+    customRowsFiltered,
+  };
+
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
   const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
     () => new Set(),
@@ -434,6 +459,14 @@ export function GlobalActionCompletionSection() {
   } | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [photoTab, setPhotoTab] = useState<"list" | "gallery">("list");
+
+  const expandDensityCacheRef = useRef<Map<string, ExpandDensitySnapshot>>(
+    new Map(),
+  );
+
+  useEffect(() => {
+    expandDensityCacheRef.current.clear();
+  }, [chartStart, chartEnd]);
 
   useEffect(() => {
     if (!rangePanelOpen) return;
@@ -457,42 +490,57 @@ export function GlobalActionCompletionSection() {
     if (!expanded) {
       setDensityMap(new Map());
       setPhotoMarkDates(new Set());
+      setDensityLoading(false);
+      return;
+    }
+    const { start, end } = effectiveBounds;
+    const cacheKey = expandDensityCacheKey({
+      rowKeyStr: keyString(expanded),
+      start,
+      end,
+      listSilentEpoch,
+    });
+    const cached = expandDensityCacheRef.current.get(cacheKey);
+    if (cached) {
+      const snap = cloneExpandDensity(cached);
+      setDensityMap(snap.densityMap);
+      setPhotoMarkDates(snap.photoMarkDates);
+      setDensityLoading(false);
       return;
     }
     let cancelled = false;
     setDensityLoading(true);
     void (async () => {
       try {
-        const { start, end } = effectiveBounds;
         if (expanded.kind === "template") {
-          const [m, photoSet] = await Promise.all([
-            fetchTemplateItemDayDensityMapForRange(
+          const { densityMap: m, photoDates: photoSet } =
+            await fetchLeaderboardTemplateItemExpandForRange(
               start,
               end,
               expanded.itemId,
-            ),
-            fetchTemplateItemPhotoDatesSetForRange(
-              start,
-              end,
-              expanded.itemId,
-            ).catch(() => new Set<string>()),
-          ]);
+            );
           if (!cancelled) {
             setDensityMap(m);
             setPhotoMarkDates(photoSet);
+            expandDensityCacheRef.current.set(
+              cacheKey,
+              snapshotExpandDensity(m, photoSet),
+            );
           }
         } else {
-          const [m, photoSet] = await Promise.all([
-            fetchCustomTitleDayDensityMapForRange(start, end, expanded.title),
-            fetchCustomTitlePhotoDatesSetForRange(
+          const { densityMap: m, photoDates: photoSet } =
+            await fetchLeaderboardCustomTitleExpandForRange(
               start,
               end,
               expanded.title,
-            ).catch(() => new Set<string>()),
-          ]);
+            );
           if (!cancelled) {
             setDensityMap(m);
             setPhotoMarkDates(photoSet);
+            expandDensityCacheRef.current.set(
+              cacheKey,
+              snapshotExpandDensity(m, photoSet),
+            );
           }
         }
       } catch {
@@ -507,7 +555,7 @@ export function GlobalActionCompletionSection() {
     return () => {
       cancelled = true;
     };
-  }, [expanded, effectiveBounds]);
+  }, [expanded, effectiveBounds, listSilentEpoch]);
 
   const openCell = useCallback(async (date: string, key: RowKey) => {
     setModal({ date, key, participants: [], loading: true });
@@ -546,18 +594,29 @@ export function GlobalActionCompletionSection() {
         e: chartEnd,
         t: templateRowsFiltered.map((r) => r.itemId),
         c: customRowsFiltered.map((r) => r.title),
+        rt: listSilentEpoch,
       }),
-    [chartStart, chartEnd, templateRowsFiltered, customRowsFiltered],
+    [
+      chartStart,
+      chartEnd,
+      templateRowsFiltered,
+      customRowsFiltered,
+      listSilentEpoch,
+    ],
   );
 
   useEffect(() => {
     if (loadingList) return;
     let cancelled = false;
     const { start, end } = effectiveBounds;
+    const { templateRowsFiltered: tr, customRowsFiltered: cr } =
+      completionRowsRef.current;
     void (async () => {
       const next = new Map<string, boolean>();
-      await Promise.all([
-        ...templateRowsFiltered.map(async (r) => {
+      const tmpl = await mapWithConcurrency(
+        tr,
+        ROW_PHOTO_RPC_CONCURRENCY,
+        async (r) => {
           const k = `t:${r.itemId}`;
           try {
             const s = await fetchTemplateItemPhotoDatesSetForRange(
@@ -565,12 +624,18 @@ export function GlobalActionCompletionSection() {
               end,
               r.itemId,
             );
-            if (!cancelled) next.set(k, s.size > 0);
+            return { k, ok: s.size > 0 };
           } catch {
-            if (!cancelled) next.set(k, false);
+            return { k, ok: false };
           }
-        }),
-        ...customRowsFiltered.map(async (r) => {
+        },
+      );
+      if (cancelled) return;
+      for (const { k, ok } of tmpl) next.set(k, ok);
+      const cust = await mapWithConcurrency(
+        cr,
+        ROW_PHOTO_RPC_CONCURRENCY,
+        async (r) => {
           const k = `c:${r.title}`;
           try {
             const s = await fetchCustomTitlePhotoDatesSetForRange(
@@ -578,24 +643,20 @@ export function GlobalActionCompletionSection() {
               end,
               r.title,
             );
-            if (!cancelled) next.set(k, s.size > 0);
+            return { k, ok: s.size > 0 };
           } catch {
-            if (!cancelled) next.set(k, false);
+            return { k, ok: false };
           }
-        }),
-      ]);
-      if (!cancelled) setRowPhotoFlags(next);
+        },
+      );
+      if (cancelled) return;
+      for (const { k, ok } of cust) next.set(k, ok);
+      setRowPhotoFlags(next);
     })();
     return () => {
       cancelled = true;
     };
-  }, [
-    loadingList,
-    effectiveBounds,
-    rowPhotoSig,
-    templateRowsFiltered,
-    customRowsFiltered,
-  ]);
+  }, [loadingList, effectiveBounds, rowPhotoSig]);
 
   function applyPickerRange(): boolean {
     let s = pickerStart;
@@ -954,103 +1015,12 @@ export function GlobalActionCompletionSection() {
               </button>
             </div>
             <div className="max-h-[55vh] overflow-y-auto p-4">
-              {modal.loading ? (
-                <p className="text-sm text-[var(--color-subtle)]">載入中…</p>
-              ) : photoTab === "list" ? (
-                <ul className="space-y-2">
-                  {modal.participants.length === 0 ? (
-                    <li className="text-sm text-[var(--color-subtle)]">
-                      無紀錄
-                    </li>
-                  ) : (
-                    modal.participants.map((p) => (
-                      <li
-                        key={p.userId}
-                        className="flex items-center gap-3 rounded-xl border border-[var(--color-muted)]/50 px-3 py-2"
-                      >
-                        {p.avatarUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={p.avatarUrl}
-                            alt=""
-                            width={36}
-                            height={36}
-                            className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-[var(--color-primary-pale)]"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-sm font-semibold text-[var(--color-primary-dark)]">
-                            {(p.nickname || "?").trim().slice(0, 1) || "?"}
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium text-[var(--color-ink)]">
-                            {p.nickname}
-                          </p>
-                          {p.photoUrl ? (
-                            <button
-                              type="button"
-                              onClick={() => setLightbox(p.photoUrl)}
-                              className="text-xs text-[var(--color-primary-dark)] underline"
-                            >
-                              查看佐證
-                            </button>
-                          ) : (
-                            <span className="text-xs text-[var(--color-subtle)]">
-                              無佐證照片
-                            </span>
-                          )}
-                        </div>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              ) : (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {modal.participants.filter((p) => p.photoUrl).length === 0 ? (
-                    <p className="col-span-full text-sm text-[var(--color-subtle)]">
-                      此日無佐證照片
-                    </p>
-                  ) : (
-                    modal.participants
-                      .filter((p) => p.photoUrl)
-                      .map((p) => (
-                        <button
-                          key={`${p.userId}-ph`}
-                          type="button"
-                          onClick={() => setLightbox(p.photoUrl!)}
-                          className="relative aspect-square overflow-hidden rounded-lg border border-[var(--color-muted)]/60 bg-[var(--color-white)]"
-                          title={p.nickname}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={p.photoUrl!}
-                            alt={`${p.nickname} 佐證`}
-                            className="h-full w-full object-cover"
-                          />
-                          {p.avatarUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={p.avatarUrl}
-                              alt=""
-                              width={24}
-                              height={24}
-                              className="pointer-events-none absolute left-1 top-1 h-6 w-6 rounded-full border-2 border-white/95 object-cover shadow-md ring-1 ring-black/10"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <span
-                              className="pointer-events-none absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/95 bg-[var(--color-primary-pale)] text-[10px] font-bold text-[var(--color-primary-dark)] shadow-md ring-1 ring-black/10"
-                              aria-hidden
-                            >
-                              {(p.nickname || "?").trim().slice(0, 1) || "?"}
-                            </span>
-                          )}
-                        </button>
-                      ))
-                  )}
-                </div>
-              )}
+              <ActionCompletionParticipantEvidence
+                participants={modal.participants}
+                photoTab={photoTab}
+                loading={modal.loading}
+                onOpenLightbox={setLightbox}
+              />
             </div>
           </div>
         </div>

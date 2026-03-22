@@ -25,7 +25,7 @@ function PhilosophyBlock() {
       <p className="mt-5 text-[0.95rem] leading-[1.75] text-[var(--color-ink-secondary)] sm:text-base sm:leading-relaxed">
         快來試試：以聯合國{" "}
         <span className="font-semibold text-[var(--color-ink)]">SDG</span>
-        為核心的每日檢核——打卡集點、連續挑戰，和群組一起把永續變成每天都想開的遊戲。
+        為核心的每日檢核——打卡集點、連續挑戰，和朋友一起累積改變。
       </p>
       <div
         className="mx-auto my-6 max-w-[min(12rem,40%)] border-t-[0.5px] border-[var(--color-muted)]"
@@ -62,7 +62,10 @@ function HowToPlayHeader() {
   return (
     <>
       <div className="flex items-center justify-center gap-2 text-[var(--color-ink)] md:justify-start">
-        <Sparkles className="h-5 w-5 shrink-0 text-[var(--color-primary-dark)]" aria-hidden />
+        <Sparkles
+          className="h-5 w-5 shrink-0 text-[var(--color-primary-dark)]"
+          aria-hidden
+        />
         <h2 className="text-lg font-semibold md:text-xl">怎麼玩？</h2>
       </div>
       <p className="mt-2 text-center text-sm leading-relaxed text-[var(--color-ink-secondary)] md:text-left">
@@ -191,9 +194,7 @@ export function HomeContentCarousel() {
   const touchStartX = useRef<number | null>(null);
 
   const go = useCallback((next: number) => {
-    setIndex((x) =>
-      Math.max(0, Math.min(OUTER_SLIDES - 1, next)),
-    );
+    setIndex((x) => Math.max(0, Math.min(OUTER_SLIDES - 1, next)));
   }, []);
 
   const prev = useCallback(() => go(index - 1), [go, index]);
@@ -212,10 +213,7 @@ export function HomeContentCarousel() {
   };
 
   return (
-    <div
-      className="relative mx-auto mt-10 w-full max-w-2xl"
-      id="how-it-works"
-    >
+    <div className="relative mx-auto mt-10 w-full max-w-2xl" id="how-it-works">
       {/* 手機：單卡 + 底部橫向「怎麼玩」，不外層輪播 */}
       <div className="md:hidden">
         <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-5 py-7 text-center">

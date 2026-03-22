@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/client";
-import type { ChecklistItemRow, CustomItemRow } from "@/lib/supabase/checklist";
 import {
+  normalizeCheckinPhotoUrls,
+  type ChecklistItemRow,
+  type CustomItemRow,
+} from "@/lib/supabase/checklist";
+import {
+  mapCellParticipantRpcRow,
   mapCustomTitleStatRow,
+  parseExpandDensityPhotoJson,
   type CellParticipant,
   type CustomTitleStatRow,
   type TemplateItemStatRow,
@@ -87,6 +93,46 @@ export async function fetchGroupTemplateItemDayDensityMapForRange(
   return m;
 }
 
+export async function fetchGroupTemplateItemExpandForRange(
+  groupId: string,
+  start: string,
+  end: string,
+  itemId: string,
+): Promise<{ densityMap: Map<string, number>; photoDates: Set<string> }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_group_template_item_day_density_and_photo_dates",
+    {
+      p_group_id: groupId,
+      p_start: start,
+      p_end: end,
+      p_item_id: itemId,
+    },
+  );
+  if (error) throw error;
+  return parseExpandDensityPhotoJson(data, "participant_count");
+}
+
+export async function fetchGroupCustomTitleExpandForRange(
+  groupId: string,
+  start: string,
+  end: string,
+  title: string,
+): Promise<{ densityMap: Map<string, number>; photoDates: Set<string> }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_group_custom_title_day_density_and_photo_dates",
+    {
+      p_group_id: groupId,
+      p_start: start,
+      p_end: end,
+      p_title: title,
+    },
+  );
+  if (error) throw error;
+  return parseExpandDensityPhotoJson(data, "checkin_count");
+}
+
 export async function fetchGroupCustomTitleDayDensityMapForRange(
   groupId: string,
   start: string,
@@ -129,18 +175,11 @@ export async function fetchGroupTemplateItemCellParticipants(
         user_id: string;
         nickname: string;
         photo_url: string | null;
+        photo_urls?: unknown;
         avatar_url?: string | null;
       }[]
     | null;
-  return (rows ?? []).map((r) => ({
-    userId: r.user_id,
-    nickname: r.nickname,
-    photoUrl: r.photo_url,
-    avatarUrl:
-      typeof r.avatar_url === "string" && r.avatar_url.length > 0
-        ? r.avatar_url
-        : null,
-  }));
+  return (rows ?? []).map(mapCellParticipantRpcRow);
 }
 
 export async function fetchGroupCustomTitleCellParticipants(
@@ -159,18 +198,11 @@ export async function fetchGroupCustomTitleCellParticipants(
         user_id: string;
         nickname: string;
         photo_url: string | null;
+        photo_urls?: unknown;
         avatar_url?: string | null;
       }[]
     | null;
-  return (rows ?? []).map((r) => ({
-    userId: r.user_id,
-    nickname: r.nickname,
-    photoUrl: r.photo_url,
-    avatarUrl:
-      typeof r.avatar_url === "string" && r.avatar_url.length > 0
-        ? r.avatar_url
-        : null,
-  }));
+  return (rows ?? []).map(mapCellParticipantRpcRow);
 }
 
 export async function fetchGroupPhotoDatesSetForRange(
@@ -259,8 +291,8 @@ export type GroupPeerDaySnapshotParsed = {
   customItems: CustomItemRow[];
   checkinItemIds: Set<string>;
   checkinCustomIds: Set<string>;
-  photoByItemId: Record<string, string>;
-  photoByCustomId: Record<string, string>;
+  photoByItemId: Record<string, string[]>;
+  photoByCustomId: Record<string, string[]>;
 };
 
 function num(v: unknown, d = 0): number {
@@ -331,23 +363,24 @@ export async function fetchGroupPeerDaySnapshot(
   const checkinsRaw = Array.isArray(o.checkins) ? o.checkins : [];
   const checkinItemIds = new Set<string>();
   const checkinCustomIds = new Set<string>();
-  const photoByItemId: Record<string, string> = {};
-  const photoByCustomId: Record<string, string> = {};
+  const photoByItemId: Record<string, string[]> = {};
+  const photoByCustomId: Record<string, string[]> = {};
   for (const row of checkinsRaw) {
     const r = row as Record<string, unknown>;
-    const ph =
-      typeof r.photo_url === "string" && r.photo_url.length > 0
-        ? r.photo_url
-        : null;
+    const urls = normalizeCheckinPhotoUrls({
+      photo_url:
+        typeof r.photo_url === "string" ? r.photo_url : null,
+      photo_urls: r.photo_urls,
+    });
     if (r.item_id) {
       const id = String(r.item_id);
       checkinItemIds.add(id);
-      if (ph) photoByItemId[id] = ph;
+      if (urls.length > 0) photoByItemId[id] = urls;
     }
     if (r.custom_item_id) {
       const id = String(r.custom_item_id);
       checkinCustomIds.add(id);
-      if (ph) photoByCustomId[id] = ph;
+      if (urls.length > 0) photoByCustomId[id] = urls;
     }
   }
 

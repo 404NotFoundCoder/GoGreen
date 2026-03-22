@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { normalizeCheckinPhotoUrls } from "@/lib/supabase/checklist";
 import { getLeaderboardDateBounds } from "@/lib/utils/leaderboardPeriod";
 import type { LeaderboardPeriod } from "@/lib/utils/leaderboard";
 
@@ -212,6 +213,94 @@ function photoDatesRowsToSet(
   return out;
 }
 
+function normalizeExpandDateKey(raw: unknown): string {
+  if (typeof raw === "string") return raw.slice(0, 10);
+  return String(raw).slice(0, 10);
+}
+
+/** 合併 RPC `*_day_density_and_photo_dates` 之 jsonb 回傳 */
+export function parseExpandDensityPhotoJson(
+  data: unknown,
+  countField: "participant_count" | "checkin_count",
+): { densityMap: Map<string, number>; photoDates: Set<string> } {
+  const o = data as {
+    density?: unknown;
+    photo_dates?: unknown;
+  } | null;
+  const densityMap = new Map<string, number>();
+  for (const row of Array.isArray(o?.density) ? o.density : []) {
+    const r = row as Record<string, unknown>;
+    const d = normalizeExpandDateKey(r.d);
+    const n =
+      countField === "participant_count"
+        ? Number(r.participant_count ?? r.checkin_count)
+        : Number(r.checkin_count ?? r.participant_count);
+    if (d) densityMap.set(d, Number.isFinite(n) ? n : 0);
+  }
+  const photoDates = new Set<string>();
+  for (const x of Array.isArray(o?.photo_dates) ? o.photo_dates : []) {
+    const k = normalizeExpandDateKey(x);
+    if (k) photoDates.add(k);
+  }
+  return { densityMap, photoDates };
+}
+
+export async function fetchLeaderboardTemplateItemExpandForRange(
+  start: string,
+  end: string,
+  itemId: string,
+): Promise<{ densityMap: Map<string, number>; photoDates: Set<string> }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_leaderboard_template_item_day_density_and_photo_dates",
+    { p_start: start, p_end: end, p_item_id: itemId },
+  );
+  if (error) throw error;
+  return parseExpandDensityPhotoJson(data, "participant_count");
+}
+
+export async function fetchLeaderboardCustomTitleExpandForRange(
+  start: string,
+  end: string,
+  title: string,
+): Promise<{ densityMap: Map<string, number>; photoDates: Set<string> }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_leaderboard_custom_title_day_density_and_photo_dates",
+    { p_start: start, p_end: end, p_title: title },
+  );
+  if (error) throw error;
+  return parseExpandDensityPhotoJson(data, "checkin_count");
+}
+
+export async function fetchProfileTemplateItemExpandForRange(
+  start: string,
+  end: string,
+  itemId: string,
+): Promise<{ densityMap: Map<string, number>; photoDates: Set<string> }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_profile_template_item_day_density_and_photo_dates",
+    { p_start: start, p_end: end, p_item_id: itemId },
+  );
+  if (error) throw error;
+  return parseExpandDensityPhotoJson(data, "participant_count");
+}
+
+export async function fetchProfileCustomTitleExpandForRange(
+  start: string,
+  end: string,
+  title: string,
+): Promise<{ densityMap: Map<string, number>; photoDates: Set<string> }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_profile_custom_title_day_density_and_photo_dates",
+    { p_start: start, p_end: end, p_title: title },
+  );
+  if (error) throw error;
+  return parseExpandDensityPhotoJson(data, "checkin_count");
+}
+
 /** 公版項目：該日至少一筆打卡含佐證（全體榜密度圖角標） */
 export async function fetchTemplateItemPhotoDatesSetForRange(
   start: string,
@@ -283,11 +372,32 @@ export async function fetchCustomTitleDayDensityMap(
 export type CellParticipant = {
   userId: string;
   nickname: string;
-  /** 該日打卡上傳之佐證 */
-  photoUrl: string | null;
+  /** 該日該項打卡之佐證（已合併 `photo_url` + `photo_urls`） */
+  photoUrls: string[];
   /** 個人頭像（users.photo_url，OAuth 同步） */
   avatarUrl: string | null;
 };
+
+export function mapCellParticipantRpcRow(r: {
+  user_id: string;
+  nickname: string;
+  photo_url: string | null;
+  photo_urls?: unknown;
+  avatar_url?: string | null;
+}): CellParticipant {
+  return {
+    userId: r.user_id,
+    nickname: r.nickname,
+    photoUrls: normalizeCheckinPhotoUrls({
+      photo_url: r.photo_url,
+      photo_urls: r.photo_urls,
+    }),
+    avatarUrl:
+      typeof r.avatar_url === "string" && r.avatar_url.length > 0
+        ? r.avatar_url
+        : null,
+  };
+}
 
 export async function fetchTemplateItemCellParticipants(
   date: string,
@@ -304,18 +414,11 @@ export async function fetchTemplateItemCellParticipants(
         user_id: string;
         nickname: string;
         photo_url: string | null;
+        photo_urls?: unknown;
         avatar_url?: string | null;
       }[]
     | null;
-  return (rows ?? []).map((r) => ({
-    userId: r.user_id,
-    nickname: r.nickname,
-    photoUrl: r.photo_url,
-    avatarUrl:
-      typeof r.avatar_url === "string" && r.avatar_url.length > 0
-        ? r.avatar_url
-        : null,
-  }));
+  return (rows ?? []).map(mapCellParticipantRpcRow);
 }
 
 export async function fetchCustomTitleCellParticipants(
@@ -333,18 +436,11 @@ export async function fetchCustomTitleCellParticipants(
         user_id: string;
         nickname: string;
         photo_url: string | null;
+        photo_urls?: unknown;
         avatar_url?: string | null;
       }[]
     | null;
-  return (rows ?? []).map((r) => ({
-    userId: r.user_id,
-    nickname: r.nickname,
-    photoUrl: r.photo_url,
-    avatarUrl:
-      typeof r.avatar_url === "string" && r.avatar_url.length > 0
-        ? r.avatar_url
-        : null,
-  }));
+  return (rows ?? []).map(mapCellParticipantRpcRow);
 }
 
 export async function fetchProfileTemplateItemStatsForRange(

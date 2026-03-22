@@ -24,6 +24,8 @@ export function useGlobalActionCompletionStats(range: {
   const [customRows, setCustomRows] = useState<CustomTitleStatRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  /** Realtime 等靜默重抓成功後遞增，供「含佐證」列標重新查 RPC */
+  const [listSilentEpoch, setListSilentEpoch] = useState(0);
 
   const loadList = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -36,6 +38,7 @@ export function useGlobalActionCompletionStats(range: {
         ]);
         setTemplateRows(t);
         setCustomRows(c);
+        if (opts?.silent) setListSilentEpoch((e) => e + 1);
       } catch (e) {
         setListError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -86,6 +89,7 @@ export function useGlobalActionCompletionStats(range: {
     customRows,
     loadingList,
     listError,
+    listSilentEpoch,
     refetchList: loadList,
   };
 }

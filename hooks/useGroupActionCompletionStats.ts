@@ -23,6 +23,7 @@ export function useGroupActionCompletionStats(
   const [customRows, setCustomRows] = useState<CustomTitleStatRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  const [listSilentEpoch, setListSilentEpoch] = useState(0);
 
   const loadList = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -91,6 +92,7 @@ export function useGroupActionCompletionStats(
     customRows,
     loadingList,
     listError,
+    listSilentEpoch,
     refetchList: loadList,
   };
 }

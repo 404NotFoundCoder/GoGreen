@@ -32,12 +32,12 @@ export default async function Home() {
               <BrandMark href="/" size="hero" />
             </div>
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-primary-dark)] sm:text-sm">
-              永續行動 × 遊戲化習慣
+              永續行動
             </p>
             <h1 className="mx-auto mt-6 max-w-[18ch] text-balance text-3xl font-bold leading-[1.15] tracking-tight text-[var(--color-ink)] sm:max-w-none sm:text-4xl">
-              把永續變成
+              每天一個小行動
               <br className="sm:hidden" />
-              每天想打開的習慣
+              ，讓永續變成日常習慣
             </h1>
 
             <HomeContentCarousel />

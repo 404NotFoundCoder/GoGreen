@@ -8,7 +8,7 @@ type Props = {
   children: React.ReactNode;
 };
 
-/** 首頁直接觸發 Google OAuth，不經 /login */
+/** 首頁直接觸發 Google OAuth */
 export function HomeGoogleStartButton({ className, children }: Props) {
   const [busy, setBusy] = useState(false);
 

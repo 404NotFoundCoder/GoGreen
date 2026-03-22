@@ -170,15 +170,16 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 | 路徑             | 說明                                      |
 | ---------------- | ----------------------------------------- |
-| `/`              | 首頁（未登入；玩法說明、Google 開始 CTA） |
-| `/login`         | 登入頁（Google）；OAuth 失敗時 `/auth/callback` 會導向 **`/login?error=auth`**，`LoginClient` 顯示「登入失敗，請重試。」 |
-| `/auth/callback` | Supabase OAuth callback：`code` 換取 session 成功則導向 `next`（預設 `/today`）；失敗或無 `code` 則 **`redirect('/login?error=auth')`** |
+| `/`              | 首頁（未登入；玩法說明、**Google 登入 CTA** `HomeGoogleStartButton`）；OAuth 失敗回 **`/?error=auth`** 時由 **`HomeAuthErrorBanner`** 顯示「登入失敗，請重試。」；**已登入**則 **`app/page.tsx` 伺服端 `getUser()`** 與 **`(app)/layout` 同源**，直接 **`redirect('/today')`**（**勿**再用客戶端 `getSession()` 導向，以免與伺服端不一致造成循環）。**無 `/login` 路由。** |
+| `/auth/callback` | Supabase OAuth callback：`code` 換取 session 成功則導向 `next`（預設 `/today`）；失敗或無 `code` 則 **`redirect('/?error=auth')`**。 |
 | `/today`         | 今日檢核（需登入）                        |
 | `/leaderboard`   | 排行榜：全體／群組內／各群間／個人（需登入） |
 | `/groups`        | 群組（需登入）                            |
 | `/profile`       | 個人：`ProfileForm`（暱稱）；`ProfileAnalyticsShell`（`LeaderboardPeriodBar` 期間、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）（需登入） |
 
-**登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 `redirect('/login')`。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
+**登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 **`redirect('/')`**（首頁）。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
+
+**Supabase Dashboard：** Authentication → URL Configuration 之 **Redirect URLs** 須包含 `{SITE_URL}/auth/callback`；**不需**再登記已移除之 `/login`。
 
 **對應程式：**
 
@@ -335,6 +336,14 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - **成員頭像**：全體榜與群組內榜**主列表**、以及群組內「**各成員完成項數**」列，優先顯示 **`public.users.photo_url`**（Google 等 OAuth 寫入之頭像 URL）；`lib/supabase/leaderboard.ts` 以 **`fetchUserProfileMap()`**（`select id, nickname, photo_url`）與榜單聚合一併載入，**`UserPeriodAgg.photoUrl`** 供 `LeaderboardShell`／`LeaderboardViz` 使用。無 URL 時維持暱稱首字圓形佔位。
 - **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；**分數表（折線圖）、SDG 分布、公版／自訂行動完成率＋密度圖**僅在子 tab **「總加權」**時載入與顯示（`useGlobalLeaderboardCharts(..., includeWeightedCharts)`）；其餘子 tab 仍載入四格統計卡所需之 **`topByScore`／`topBySdg`／`topHotAction`**（較輕量）。**即時更新**：主列表與分數表／SDG 圖表之 hook 監聽 **`user_daily_stats`**（打卡後通常會刷新 stats）；**`GlobalActionCompletionSection`** 另由 **`useGlobalActionCompletionStats`** 監聽 **`daily_checkins`、`user_daily_custom_items`、`user_daily_stats`**（見 [Realtime 規範](#realtime-規範)）。統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
 - 統計面板：參與人數、**分數最高**、**SDG 覆蓋最高**（副標 **`N=…（相異）+ M=…（單日最多）＝合計`**）、**熱門行動（第 1 名，打卡次數）**；皆標註所選期間 `[done]`
+
+#### 熱門行動統計卡（資料來源與語意）
+
+- **怎麼算**：`rpc_global_hot_actions`（全體，**`20260321220000_leaderboard_analytics_rpc.sql`**）在 **頁面所選期間**（`p_start`～`p_end`，與榜單期間一致）內，統計 **`daily_checkins` 每一筆完成列**：公版 **`join checklist_items`** 以 **`ci.title`** 分組 `count(*)`；自訂 **`join custom_items`** 以 **`cu.title`** 分組；兩段 **`union all`** 後 **`order by action_count desc limit`**。前端 **`p_limit = 1`**，卡上顯示**第一名標題**與其 **`action_count`**（UI 可寫「次打卡」「完成筆數」等，語意皆為 **打卡列數**，非「分」）。
+- **本群**：`rpc_group_hot_actions`（**`20260322180000_group_hot_actions_rpc.sql`**）邏輯同上，但僅計入 **`dc.user_id` 屬該群 `group_members`** 之列；由 **`fetchGroupLeaderboardCharts`**／`useGroupLeaderboardCharts` 呼叫。
+- **與「分數表」的區別**：熱門行動是 **期間內依標題聚合的打卡次數**；**分數表** 為 **`raw_score` 按日加總**。兩者資料維度不同，勿把卡上數字當成「分數表上的分」。
+- **為什麼畫面上好像沒看到誰在打卡該項**：此卡**不列出使用者**，只顯示全體或本群**合計**。數字可能來自 **其他成員**、**種子／測試資料**、或 **該期間內任一曆日**的歷史 `daily_checkins`（含公版 **`item_id`** 對應之 **`checklist_items.title`**）。若要對照「誰在某格完成」，全體榜 **總加權** 專區 **`GlobalActionCompletionSection`** 可點密度圖格看 **完成者清單**；本群若無同等 UI，須由具權限者查庫或另做產品功能。
+
 - **總加權**專區圖表：**分數表**（`GlobalDailyCompletionBars`，**SVG 折線＋面積**）與 **SDG 行動分布**兩卡皆 **白底**（`bg-[var(--color-white)]`）。**分數表**資料為圖表範圍內使用者之 **`raw_score` 按日／按段加總**（`leaderboardAnalytics.aggregateFromStats`）；**SDG 行動分布**為打卡列 SDG 計次占比；標籤為 **`SDG n`＋中文名** 藥丸（`SDG_COLORS` 淡底深字）；進度條軌道為 **`--color-surface`**，填色為各 SDG 主色。
 - **`GlobalActionCompletionSection`**（公版項目／自訂標題完成率＋密度圖）：
   - **期間列**：**今日／本週／本月／自訂** 四欄 **等寬** 同一膠囊列（**自訂**＝日曆圖示＋「自訂」＋ chevron **同一橫列**）。選 **自訂** 且已套用區間時，該欄為**整格淺綠**選中態（無「使用中」小徽章）。
@@ -349,7 +358,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 ### 群組內排行榜 `[done]`
 
 - **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`（以 `group_members` **全體成員**為準，無打卡者仍列入 0 分）、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
-- 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）
+- 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）；**熱門行動**（第 1 名標題與期間內打卡列數）見上節 **「熱門行動統計卡」**、`rpc_group_hot_actions`（須 **`20260322180000_group_hot_actions_rpc.sql`**）
 - 圖表：**本群**每日**分數表**（折線，成員 **`raw_score` 按日加總**）、**本群** SDG 行動分布（`rpc_group_sdg_distribution`）**僅在子 tab「總加權」顯示**；圖表區第一卡目前為 **`bg-[var(--color-surface)]`**、SDG 卡為白底（與全體榜第一卡皆白底略異，可再統一）。**各成員完成項數橫條**（`GroupMemberCountBars`）仍於各子 tab 顯示 `[done]`（需 `20260321230100_group_sdg_distribution_rpc.sql`）
 - 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
@@ -750,6 +759,7 @@ group by g.id, g.name, g.is_public;
 | `20260321220000_leaderboard_analytics_rpc.sql` | `rpc_global_sdg_distribution`、`rpc_global_hot_actions`、`rpc_my_sdg_distribution` |
 | `20260321230100_group_sdg_distribution_rpc.sql` | `rpc_group_sdg_distribution`（群組成員期間內 SDG 次數） |
 | `20260321231000_leaderboard_user_sdg_goals_rpc.sql` | `rpc_leaderboard_user_sdg_goals`（每位使用者期間相異 SDG，供 SDG 覆蓋維度） |
+| `20260322180000_group_hot_actions_rpc.sql` | `rpc_group_hot_actions`（群組成員期間內依標題之熱門行動，與 `rpc_global_hot_actions` 同構） |
 | `20260321232000_leaderboard_user_checkin_split_rpc.sql` | `rpc_leaderboard_user_checkin_split`（公版／自訂打卡次數拆項；`lib/supabase/leaderboard.ts` 使用） |
 | `20260322120000_leaderboard_group_members_rpc.sql` | `rpc_group_member_user_ids`（呼叫者須為該群成員，回傳該群**全部** `user_id`）；`rpc_leaderboard_group_rows`（已登入：全表 `group_members` 併 `groups` 名稱／公開旗標，供各群間榜與個人快照） |
 | `20260322123000_leaderboard_action_density_rpcs.sql` | 全體「行動完成率／密度」：`rpc_leaderboard_default_template_item_stats`、`rpc_leaderboard_template_item_day_density`、`rpc_leaderboard_template_item_cell_participants`、自訂標題彙總之 `rpc_leaderboard_custom_title_*`（初版；自訂分母後續由下列檔覆寫） |
@@ -760,6 +770,25 @@ group by g.id, g.name, g.is_public;
 | `20260322163000_leaderboard_cell_participants_avatar.sql` | `rpc_leaderboard_*_cell_participants` 增 **`avatar_url`**（`users.photo_url`）；**`handle_new_user`** 併寫 Google **`picture`**（選用；完成者頭像與佐證 `photo_url` 分欄） |
 
 前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
+
+### 開發／測試：清空業務資料並重設公版（`wipe_and_reseed.sql`）
+
+專案提供 **`supabase/scripts/wipe_and_reseed.sql`**，用於在**不刪表、不動 RPC／函式／trigger**的前提下，清空 **`public` 業務表資料列**並重新寫入 **SDG（17 筆）** 與 **系統預設範本 + 10 筆 canonical 公版**（語意與 **`20260321120000_sdgs_tag_colors.sql`**、**`20260322140000_resync_default_checklist.sql`** 對齊）。
+
+**涵蓋表**（與 migrations 內 `public` 業務表一致）：`daily_checkins`、`user_daily_stats`、`user_daily_custom_items`、`push_subscriptions`、`group_invitations`、`group_members`、`groups`、`custom_items`、`checklist_items`、`checklist_templates`、`users`、`sdgs`。若日後 migration **新增** `public` 表，須同步把該表補進腳本內 **`TRUNCATE`** 清單。
+
+**建議執行方式（雲端專案）**
+
+1. Supabase Dashboard → **SQL Editor** → 貼上該檔全文，執行 **`begin;` 至 `commit;`** 整段（含 **`TRUNCATE … CASCADE`** 與後續 **`INSERT`**）。**無法復原**，確認環境後再跑。
+2. 執行完後 **`public.users` 為空**，但 **`auth.users` 仍存在** 時，會出現「有登入身分、無 profile 列」的不一致；若仍要用**同一帳號**登入，通常可再登入並依 **`handle_new_user`** 等流程重建 `public.users`（依實際觸發器／App 行為為準）。
+3. **選用——連登入帳號一併清空**（開發／測試、**無法復原**）：在上一段 **`COMMIT` 成功後**，**另開一則查詢**執行（勿與主腳本同一批註解掉；檔案末尾註解僅供複製，執行時須去掉 `--`）：
+   - 優先：`delete from auth.users;`
+   - 若報 FK 錯誤，可再試：`delete from auth.identities;` 後接 `delete from auth.users;`（依 Supabase 版本 schema 可能略有差異）；權限不足時改到 Dashboard → **Authentication** 手動刪除使用者。
+4. **不要**把「清空 Auth」當成必跑步驟；**保留帳號**時**不要**執行 `delete from auth.users`。
+
+**本機**若已用 Supabase CLI／Docker：**`npx supabase db reset`** 會整庫重跑 migration 並清空 **Auth**，等同全新環境，通常比手動腳本更徹底。
+
+**未涵蓋**：**Storage**（例如打卡佐證圖）不會被此 SQL 刪除，需至 Storage 另行清理。
 
 ### Row Level Security（RLS）
 
@@ -1293,6 +1322,30 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ---
 
+### [2026-03-22] v0.10.48 — 修復首頁與 `/today` 循環跳轉
+
+- `[FIX]` **`app/page.tsx`**：已登入改由**伺服端** `createClient()` + **`getUser()`** 後 **`redirect('/today')`**；刪除 **`HomeAuthRedirect`**（客戶端 **`getSession()`** 與 **`(app)/layout`** 的 **`getUser()`** 不一致時會 **`/` ↔ `/today` 瘋狂跳轉**）
+- `[DOCS]` 路由表 **`/`** 列補充說明
+
+### [2026-03-22] v0.10.47 — 移除 `/login` 路由
+
+- `[ARCH]` 刪除 **`app/login/`**（`page.tsx`、`LoginClient.tsx`）；登入僅能於首頁 **`HomeGoogleStartButton`** 觸發 OAuth
+- `[DOCS]` 「路由與登入保護」表移除 `/login`；補 **Supabase Redirect URLs** 不需 `/login` 之說明
+
+### [2026-03-22] v0.10.46 — 未登入導向首頁、OAuth 失敗於首頁提示
+
+- `[FEAT]` **`app/(app)/layout.tsx`**：未登入改 **`redirect('/')`**，不再強制 **`/login`**
+- `[FEAT]` **`/auth/callback`** 失敗改導 **`/?error=auth`**；新增 **`HomeAuthErrorBanner`**（`Suspense` 包 `useSearchParams`）於首頁顯示「登入失敗，請重試。」
+- `[DOCS]` 「路由與登入保護」表與說明同步
+
+### [2026-03-22] v0.10.45 — 資料庫：wipe 腳本說明入 INSTRUCTIONS
+
+- `[DOCS]` **資料庫規範**：新增 **「開發／測試：清空業務資料並重設公版（`wipe_and_reseed.sql`）」**——`TRUNCATE` 範圍、與 migration 對齊、SQL Editor 執行 **`begin`～`commit`**、**選用** `delete from auth.users`（須另開查詢、非必跑）、本機 **`supabase db reset`**、Storage 未清除之提醒
+
+### [2026-03-22] v0.10.44 — 熱門行動文件（資料來源、與分數表區隔）
+
+- `[DOCS]` **熱門行動統計卡**：補 **怎麼算**（`daily_checkins`＋公版／自訂 `title` 聚合、`union all`、`limit 1`）、**本群** `rpc_group_hot_actions`、**與分數表不同維度**、**為何卡上不顯示誰打卡**（聚合／他成員／種子／歷史）；RPC 表補 **`20260322180000_group_hot_actions_rpc.sql`**
+
 ### [2026-03-22] v0.10.43 — 分數表折線、原始分彙總、`INSTRUCTIONS` 對齊
 
 - `[FEAT]` **分數表**：`GlobalDailyCompletionBars` 改 **SVG 折線＋面積**；全體／本群 **`aggregateFromStats`** 按日加總 **`raw_score`**（回傳欄位名仍為 `dailyCompletions`，型別註解標明語意）；個人頁改餵 **`dailyScores`**
@@ -1356,7 +1409,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ### [2026-03-22] v0.10.34 — 未 commit 變更與文件對齊
 
-- `[DOCS]` **路由與登入**：`/auth/callback` 失敗 → `/login?error=auth`；`/profile` 路由列改為 `ProfileForm` + `ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）
+- `[DOCS]` **路由與登入**：`/auth/callback` 失敗時導向（後於 v0.10.46 改為 `/?error=auth`）；`/profile` 路由列改為 `ProfileForm` + `ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）
 - `[DOCS]` **分層職責**：`hooks/` 補齊排行榜相關 hook；`lib/utils` 範例補 `leaderboardPeriod.ts`；**資料庫**新增「排行榜／分析用 RPC」表（含 `rpc_leaderboard_user_sdg_goals`、`rpc_leaderboard_user_checkin_split` 等四個 migration 檔）
 - `[DOCS]` **README**：本地資料庫步驟補上述四個 RPC migration；功能表「個人資料」一行與實作對齊
 - `[FIX]` **`AppShell`**：主內容外層與 page 容器加 **`min-w-0`**，避免 flex 版面橫向溢出

@@ -1,13 +1,30 @@
-import { HomeAuthRedirect } from "@/components/home/HomeAuthRedirect";
+import { HomeAuthErrorBanner } from "@/components/home/HomeAuthErrorBanner";
 import { HomeContentCarousel } from "@/components/home/HomeContentCarousel";
 import { HomeGoogleStartButton } from "@/components/home/HomeGoogleStartButton";
 import { BrandMark } from "@/components/layout/BrandMark";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
-/** 首頁不呼叫 Supabase 伺服器端，避免未設定 .env 時整站 500 */
-export default function Home() {
+/** 與 `app/(app)/layout.tsx` 相同：伺服端 `getUser()`，避免客戶端 `getSession()` 與伺服端不一致造成 `/` ↔ `/today` 循環 */
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) redirect("/today");
+  } catch {
+    /* 未設定或錯誤的 .env：仍顯示行銷首頁（與舊行為一致） */
+  }
+
   return (
     <>
-      <HomeAuthRedirect />
+      <Suspense fallback={null}>
+        <HomeAuthErrorBanner />
+      </Suspense>
       <main className="flex min-h-full flex-1 flex-col bg-[var(--color-bg)] px-4 py-14 sm:py-20">
         <div className="mx-auto w-full max-w-3xl">
           <header className="text-center">

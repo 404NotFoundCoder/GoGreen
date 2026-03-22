@@ -8,7 +8,6 @@ import { RankMark } from "@/components/leaderboard/RankMark";
 import { GlobalActionCompletionSection } from "@/components/leaderboard/GlobalActionCompletionSection";
 import {
   GlobalDailyCompletionBars,
-  GroupMemberCountBars,
   SdgDistributionBars,
 } from "@/components/leaderboard/LeaderboardViz";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -959,69 +958,144 @@ export function LeaderboardShell() {
                 <p className="mt-1 text-lg font-semibold text-[var(--color-ink)]">
                   {myGroupName}
                 </p>
+                <p className="mt-2 text-xs text-[var(--color-ink-secondary)]">
+                  群組人數{" "}
+                  <span className="font-semibold tabular-nums text-[var(--color-ink)]">
+                    {groupLb.loading
+                      ? "…"
+                      : (groupLb.data?.totalParticipants ?? 0)}
+                  </span>{" "}
+                  人
+                </p>
               </div>
-              {groupPeriodStats.loading ? (
-                <Skeleton className="h-32 w-full rounded-2xl" />
-              ) : null}
               {groupPeriodStats.error ? (
                 <p className="text-sm text-[var(--color-ink)]">
                   {groupPeriodStats.error.message}
                 </p>
               ) : null}
-              {groupPeriodStats.data ? (
+              {groupPeriodStats.loading || groupCharts.loading ? (
+                <Skeleton className="h-36 w-full rounded-2xl" />
+              ) : null}
+              {!groupPeriodStats.loading &&
+              !groupCharts.loading &&
+              (groupPeriodStats.data || groupCharts.data) ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
-                    <p className="text-xs text-[var(--color-ink-secondary)]">
-                      群組總原始分
+                  <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-primary-light)]/40 p-4">
+                    <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                      「{periodScopeLabel(period)}」群組總原始分
                     </p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--color-ink)]">
-                      {groupPeriodStats.data.totalRawScore}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
-                    <p className="text-xs text-[var(--color-ink-secondary)]">
-                      群組平均 SDG 指標（N+M）
-                    </p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--color-ink)]">
-                      {groupPeriodStats.data.avgSdgRankPerMember.toFixed(1)}
+                    <p className="mt-1 text-3xl font-bold tabular-nums text-[var(--color-primary-dark)]">
+                      {groupPeriodStats.data?.totalRawScore ?? "—"}
                     </p>
                     <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                      各成員期間 N+M 之和÷人數（與「各群間」榜一致）
+                      成員於該期間原始分加總
                     </p>
                   </div>
                   <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
-                    <p className="text-xs text-[var(--color-ink-secondary)]">
-                      期間最長 streak
+                    <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                      「{periodScopeLabel(period)}」分數最高（本群）
                     </p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--color-ink)]">
-                      {groupPeriodStats.data.longestStreakInPeriod} 天
+                    <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
+                      {groupCharts.data?.topByScore?.nickname ?? "—"}
                     </p>
                     <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                      {groupPeriodStats.data.longestStreakMember
-                        ? `由 ${groupPeriodStats.data.longestStreakMember.nickname} 保持`
-                        : "尚無有效 streak"}
+                      {groupCharts.data?.topByScore
+                        ? `期間原始分加總 ${groupCharts.data.topByScore.totalRawScore} 分`
+                        : "尚無打卡資料"}
                     </p>
                   </div>
                   <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
-                    <p className="text-xs text-[var(--color-ink-secondary)]">
-                      最活躍成員
+                    <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                      「{periodScopeLabel(period)}」SDG 覆蓋最高（本群）
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-[var(--color-ink)]">
-                      {groupPeriodStats.data.topMember?.nickname ?? "—"}
+                    <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
+                      {groupCharts.data?.topBySdg?.nickname ?? "—"}
                     </p>
-                    <p className="text-xs text-[var(--color-subtle)]">
-                      {groupPeriodStats.data.topMember
-                        ? `${groupPeriodStats.data.topMember.totalCompleted} 項完成`
-                        : ""}
+                    <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                      {groupCharts.data?.topBySdg
+                        ? `N=${groupCharts.data.topBySdg.sdgUnionCount}（相異）+ M=${groupCharts.data.topBySdg.maxSdgCoverage}（單日最多）＝${groupCharts.data.topBySdg.sdgMetric}`
+                        : "尚無打卡資料"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
+                    <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                      「{periodScopeLabel(period)}」熱門行動（本群第 1 名）
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
+                      {groupCharts.data?.topHotAction?.label ?? "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                      {groupCharts.data?.topHotAction
+                        ? `${groupCharts.data.topHotAction.count} 次打卡`
+                        : "依群組成員打卡次數"}
                     </p>
                   </div>
                 </div>
               ) : null}
 
+              {groupLb.error ? (
+                <p className="text-[var(--color-ink)]">
+                  {groupLb.error.message}
+                </p>
+              ) : null}
+              {!groupLb.loading &&
+              groupLb.data &&
+              groupLb.data.rows.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-[var(--color-muted)] bg-[var(--color-surface)] p-8 text-center text-[var(--color-ink-secondary)]">
+                  此群組尚無成員，或無法載入成員列表。
+                </p>
+              ) : null}
+              {!groupLb.loading &&
+              groupLb.data &&
+              groupLb.data.rows.length > 0 ? (
+                <ol className="space-y-3">
+                  {groupLb.data.rows.map((row) => (
+                    <li
+                      key={row.userId}
+                      className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <RankMark rank={row.rank} />
+                        <LeaderboardUserAvatar
+                          nickname={row.nickname}
+                          photoUrl={row.photoUrl}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-[var(--color-ink)]">
+                            {row.nickname}
+                          </p>
+                          <LeaderboardUserRowSubline
+                            dimension={dimension}
+                            row={row}
+                          />
+                        </div>
+                      </div>
+                      <UserRowBar
+                        row={row}
+                        dimension={dimension}
+                        maxVal={groupMax}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+              {!groupLb.loading &&
+              groupLb.data &&
+              groupLb.data.rows.length > 0 ? (
+                <LeaderboardPaginationBar
+                  page={groupLb.data.page}
+                  totalPages={groupLb.data.totalPages}
+                  totalCount={groupLb.data.totalParticipants}
+                  pageSize={groupLb.data.pageSize}
+                  onPageChange={setListPage}
+                />
+              ) : null}
+
               {dimension === "weighted" && groupCharts.error ? (
                 <p className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
                   群組圖表載入失敗：{groupCharts.error.message}（請確認已套用
-                  `20260321230100_group_sdg_distribution_rpc.sql`）
+                  `20260321230100_group_sdg_distribution_rpc.sql`、
+                  `20260322180000_group_hot_actions_rpc.sql`）
                 </p>
               ) : null}
 
@@ -1030,7 +1104,7 @@ export function LeaderboardShell() {
                   key={`group-charts-${period}`}
                   className="grid min-w-0 gap-4 lg:grid-cols-2"
                 >
-                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
                     <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                       {dailyCompletionTitle(
                         groupCharts.data.dailyChartMode,
@@ -1068,82 +1142,6 @@ export function LeaderboardShell() {
                   <Skeleton className="h-56 rounded-2xl" />
                   <Skeleton className="h-56 rounded-2xl" />
                 </div>
-              ) : null}
-
-              {!groupLb.loading &&
-              groupLb.data &&
-              (groupLb.data.memberBarRows?.length ?? 0) > 0 ? (
-                <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
-                  <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                    各成員完成項數（前 12）
-                  </h3>
-                  <div className="mt-3">
-                    <GroupMemberCountBars
-                      rows={groupLb.data.memberBarRows ?? []}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {groupLb.error ? (
-                <p className="text-[var(--color-ink)]">
-                  {groupLb.error.message}
-                </p>
-              ) : null}
-              {!groupLb.loading &&
-              groupLb.data &&
-              groupLb.data.rows.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-[var(--color-muted)] bg-[var(--color-surface)] p-8 text-center text-[var(--color-ink-secondary)]">
-                  此群組尚無成員，或無法載入成員列表。
-                </p>
-              ) : null}
-              {!groupLb.loading &&
-              groupLb.data &&
-              groupLb.data.rows.length > 0 ? (
-                <>
-                  <p className="text-sm text-[var(--color-ink-secondary)]">
-                    「{periodScopeLabel(period)}」群組成員共{" "}
-                    {groupLb.data.totalParticipants}{" "}
-                    人（含該區間內尚未打卡者，仍以 0 分列入排行）
-                  </p>
-                  <ol className="space-y-3">
-                    {groupLb.data.rows.map((row) => (
-                      <li
-                        key={row.userId}
-                        className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <RankMark rank={row.rank} />
-                          <LeaderboardUserAvatar
-                            nickname={row.nickname}
-                            photoUrl={row.photoUrl}
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-[var(--color-ink)]">
-                              {row.nickname}
-                            </p>
-                            <LeaderboardUserRowSubline
-                              dimension={dimension}
-                              row={row}
-                            />
-                          </div>
-                        </div>
-                        <UserRowBar
-                          row={row}
-                          dimension={dimension}
-                          maxVal={groupMax}
-                        />
-                      </li>
-                    ))}
-                  </ol>
-                  <LeaderboardPaginationBar
-                    page={groupLb.data.page}
-                    totalPages={groupLb.data.totalPages}
-                    totalCount={groupLb.data.totalParticipants}
-                    pageSize={groupLb.data.pageSize}
-                    onPageChange={setListPage}
-                  />
-                </>
               ) : null}
             </>
           )}

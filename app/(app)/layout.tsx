@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * 在伺服器端驗證登入（讀取 .env.local + Cookie），不依賴 Edge Middleware。
- * 未登入則導向 /login。
+ * 未登入則導向首頁 `/`。
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    redirect("/");
   }
 
   return <AppShell>{children}</AppShell>;

@@ -446,23 +446,62 @@ export async function fetchGroupLeaderboardCharts(
   options?: { includeWeightedCharts?: boolean },
 ): Promise<GlobalLeaderboardChartsData> {
   const includeWeighted = options?.includeWeightedCharts !== false;
+  const { start, end } = getLeaderboardDateBounds(period);
+  const memberIds = await fetchGroupMemberIds(groupId);
+  const idSet = new Set(memberIds);
+
+  const { users } = await fetchLeaderboardStatsAndUserAggregates(period);
+  const groupUsers = users.filter((u) => idSet.has(u.userId));
+  const w = computeWeightedRanks(groupUsers);
+  const byScore = rankAllUsers(groupUsers, "score", w);
+  const bySdg = rankAllUsers(groupUsers, "sdg", w);
+  const topScoreRow = byScore[0];
+  const topSdgRow = bySdg[0];
+  const topByScore = topScoreRow
+    ? {
+        nickname: topScoreRow.nickname,
+        totalRawScore: Math.round(topScoreRow.totalRawScore),
+      }
+    : null;
+  const topBySdg = topSdgRow
+    ? {
+        nickname: topSdgRow.nickname,
+        sdgMetric: sdgRankSum(topSdgRow),
+        sdgUnionCount: topSdgRow.sdgUnionCount,
+        maxSdgCoverage: topSdgRow.maxSdgCoverage,
+      }
+    : null;
+
+  const supabase = createClient();
+  const hotRes = await supabase.rpc("rpc_group_hot_actions", {
+    p_group_id: groupId,
+    p_start: start,
+    p_end: end,
+    p_limit: 1,
+  });
+  if (hotRes.error) throw hotRes.error;
+  const hotRows = hotRes.data as
+    | { label: string; action_count: number | string }[]
+    | null;
+  const firstHot = hotRows?.[0];
+  const topHotAction = firstHot
+    ? { label: firstHot.label, count: Number(firstHot.action_count) }
+    : null;
+
   if (!includeWeighted) {
     return {
       totalCompletions: 0,
       usersWithFullSdgCoverage: 0,
-      topByScore: null,
-      topBySdg: null,
+      topByScore,
+      topBySdg,
       dailyCompletions: [],
       dailyChartMode: "week_daily",
       sdgDistribution: [],
-      topHotAction: null,
+      topHotAction,
     };
   }
 
-  const memberIds = await fetchGroupMemberIds(groupId);
   const stats = await fetchLeaderboardDailyStatsForPeriod(period);
-  const { start, end } = getLeaderboardDateBounds(period);
-  const idSet = new Set(memberIds);
   const base = aggregateFromStats(stats, {
     period,
     defaultStart: start,
@@ -470,7 +509,6 @@ export async function fetchGroupLeaderboardCharts(
     userIds: idSet,
   });
 
-  const supabase = createClient();
   const sdgRes = await supabase.rpc("rpc_group_sdg_distribution", {
     p_group_id: groupId,
     p_start: start,
@@ -489,10 +527,10 @@ export async function fetchGroupLeaderboardCharts(
 
   return {
     ...base,
-    topByScore: null,
-    topBySdg: null,
+    topByScore,
+    topBySdg,
     sdgDistribution,
-    topHotAction: null,
+    topHotAction,
   };
 }
 

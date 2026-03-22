@@ -10,6 +10,7 @@ export type TemplateItemStatRow = {
   activeUsers: number;
   checkinCount: number;
   achieverCount: number;
+  sdgIds: number[];
 };
 
 export type CustomTitleStatRow = {
@@ -23,6 +24,7 @@ export type CustomTitleStatRow = {
   achieverCount: number;
   /** 後端仍回傳舊欄位時為 true；畫面應提示套用 `20260322141000_custom_title_stats_list_days.sql` */
   legacyListDenominator?: boolean;
+  sdgIds: number[];
 };
 
 function templateRatePct(row: TemplateItemStatRow): number {
@@ -43,10 +45,20 @@ function safeNonNeg(n: unknown): number {
   return Number.isFinite(v) && v >= 0 ? v : 0;
 }
 
-export async function fetchDefaultTemplateItemStats(
-  period: LeaderboardPeriod,
+function parseSdgIds(raw: unknown): number[] {
+  if (!raw || !Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const x of raw) {
+    const n = Number(x);
+    if (Number.isInteger(n) && n >= 1 && n <= 17) out.push(n);
+  }
+  return out;
+}
+
+export async function fetchDefaultTemplateItemStatsForRange(
+  start: string,
+  end: string,
 ): Promise<TemplateItemStatRow[]> {
-  const { start, end } = getLeaderboardDateBounds(period);
   const supabase = createClient();
   const { data, error } = await supabase.rpc(
     "rpc_leaderboard_default_template_item_stats",
@@ -62,6 +74,7 @@ export async function fetchDefaultTemplateItemStats(
         active_users: number | string;
         checkin_count: number | string;
         achiever_count: number | string;
+        sdg_ids?: unknown;
       }[]
     | null;
   return (rows ?? []).map((r) => ({
@@ -72,14 +85,22 @@ export async function fetchDefaultTemplateItemStats(
     activeUsers: Number(r.active_users),
     checkinCount: Number(r.checkin_count),
     achieverCount: Number(r.achiever_count),
+    sdgIds: parseSdgIds(r.sdg_ids),
   }));
 }
 
-export async function fetchCustomTitleStats(
+export async function fetchDefaultTemplateItemStats(
   period: LeaderboardPeriod,
+): Promise<TemplateItemStatRow[]> {
+  const { start, end } = getLeaderboardDateBounds(period);
+  return fetchDefaultTemplateItemStatsForRange(start, end);
+}
+
+export async function fetchCustomTitleStatsForRange(
+  start: string,
+  end: string,
   limit = 30,
 ): Promise<CustomTitleStatRow[]> {
-  const { start, end } = getLeaderboardDateBounds(period);
   const supabase = createClient();
   const { data, error } = await supabase.rpc(
     "rpc_leaderboard_custom_title_stats",
@@ -88,6 +109,14 @@ export async function fetchCustomTitleStats(
   if (error) throw error;
   const rows = data as Record<string, unknown>[] | null;
   return (rows ?? []).map(mapCustomTitleStatRow);
+}
+
+export async function fetchCustomTitleStats(
+  period: LeaderboardPeriod,
+  limit = 30,
+): Promise<CustomTitleStatRow[]> {
+  const { start, end } = getLeaderboardDateBounds(period);
+  return fetchCustomTitleStatsForRange(start, end, limit);
 }
 
 function mapCustomTitleStatRow(r: Record<string, unknown>): CustomTitleStatRow {
@@ -107,6 +136,7 @@ function mapCustomTitleStatRow(r: Record<string, unknown>): CustomTitleStatRow {
       onListDays: safeNonNeg(rawList),
       checkinCount,
       achieverCount,
+      sdgIds: parseSdgIds(r.sdg_ids),
     };
   }
 
@@ -119,14 +149,15 @@ function mapCustomTitleStatRow(r: Record<string, unknown>): CustomTitleStatRow {
     checkinCount,
     achieverCount,
     legacyListDenominator: true,
+    sdgIds: parseSdgIds(r.sdg_ids),
   };
 }
 
-export async function fetchTemplateItemDayDensityMap(
-  period: LeaderboardPeriod,
+export async function fetchTemplateItemDayDensityMapForRange(
+  start: string,
+  end: string,
   itemId: string,
 ): Promise<Map<string, number>> {
-  const { start, end } = getLeaderboardDateBounds(period);
   const supabase = createClient();
   const { data, error } = await supabase.rpc(
     "rpc_leaderboard_template_item_day_density",
@@ -142,11 +173,19 @@ export async function fetchTemplateItemDayDensityMap(
   return m;
 }
 
-export async function fetchCustomTitleDayDensityMap(
+export async function fetchTemplateItemDayDensityMap(
   period: LeaderboardPeriod,
-  title: string,
+  itemId: string,
 ): Promise<Map<string, number>> {
   const { start, end } = getLeaderboardDateBounds(period);
+  return fetchTemplateItemDayDensityMapForRange(start, end, itemId);
+}
+
+export async function fetchCustomTitleDayDensityMapForRange(
+  start: string,
+  end: string,
+  title: string,
+): Promise<Map<string, number>> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc(
     "rpc_leaderboard_custom_title_day_density",
@@ -162,10 +201,42 @@ export async function fetchCustomTitleDayDensityMap(
   return m;
 }
 
+/** 自訂標題：該日至少一筆打卡含 `photo_url`（密度圖角標）；RPC 未套用時請 catch 後用空 Set */
+export async function fetchCustomTitlePhotoDatesSetForRange(
+  start: string,
+  end: string,
+  title: string,
+): Promise<Set<string>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_leaderboard_custom_title_day_photo_dates",
+    { p_start: start, p_end: end, p_title: title },
+  );
+  if (error) throw error;
+  const rows = data as { d: string }[] | null;
+  const out = new Set<string>();
+  for (const r of rows ?? []) {
+    const k = typeof r.d === "string" ? r.d : String(r.d).slice(0, 10);
+    out.add(k);
+  }
+  return out;
+}
+
+export async function fetchCustomTitleDayDensityMap(
+  period: LeaderboardPeriod,
+  title: string,
+): Promise<Map<string, number>> {
+  const { start, end } = getLeaderboardDateBounds(period);
+  return fetchCustomTitleDayDensityMapForRange(start, end, title);
+}
+
 export type CellParticipant = {
   userId: string;
   nickname: string;
+  /** 該日打卡上傳之佐證 */
   photoUrl: string | null;
+  /** 個人頭像（users.photo_url，OAuth 同步） */
+  avatarUrl: string | null;
 };
 
 export async function fetchTemplateItemCellParticipants(
@@ -179,12 +250,21 @@ export async function fetchTemplateItemCellParticipants(
   );
   if (error) throw error;
   const rows = data as
-    | { user_id: string; nickname: string; photo_url: string | null }[]
+    | {
+        user_id: string;
+        nickname: string;
+        photo_url: string | null;
+        avatar_url?: string | null;
+      }[]
     | null;
   return (rows ?? []).map((r) => ({
     userId: r.user_id,
     nickname: r.nickname,
     photoUrl: r.photo_url,
+    avatarUrl:
+      typeof r.avatar_url === "string" && r.avatar_url.length > 0
+        ? r.avatar_url
+        : null,
   }));
 }
 
@@ -199,12 +279,21 @@ export async function fetchCustomTitleCellParticipants(
   );
   if (error) throw error;
   const rows = data as
-    | { user_id: string; nickname: string; photo_url: string | null }[]
+    | {
+        user_id: string;
+        nickname: string;
+        photo_url: string | null;
+        avatar_url?: string | null;
+      }[]
     | null;
   return (rows ?? []).map((r) => ({
     userId: r.user_id,
     nickname: r.nickname,
     photoUrl: r.photo_url,
+    avatarUrl:
+      typeof r.avatar_url === "string" && r.avatar_url.length > 0
+        ? r.avatar_url
+        : null,
   }));
 }
 

@@ -86,9 +86,11 @@ export type LeaderboardDailyStatRow = {
   streak: number | null;
 };
 
+type UserProfileMini = { nickname: string; photoUrl: string | null };
+
 function aggregateUserList(
   stats: LeaderboardDailyStatRow[],
-  nick: Map<string, string>,
+  profiles: Map<string, UserProfileMini>,
 ): UserPeriodAgg[] {
   const agg = new Map<
     string,
@@ -122,9 +124,19 @@ function aggregateUserList(
 
   const list: UserPeriodAgg[] = [];
   for (const [userId, v] of agg) {
+    const pr = profiles.get(userId);
+    const nick =
+      pr?.nickname && String(pr.nickname).trim()
+        ? String(pr.nickname).trim()
+        : "—";
+    const photo =
+      pr?.photoUrl && String(pr.photoUrl).trim()
+        ? String(pr.photoUrl).trim()
+        : null;
     list.push({
       userId,
-      nickname: nick.get(userId) ?? "—",
+      nickname: nick,
+      photoUrl: photo,
       totalRawScore: v.sumRaw,
       totalCompleted: v.totalComp,
       templateCheckins: 0,
@@ -143,7 +155,7 @@ function aggregateUserList(
 function mergeMembersWithAgg(
   memberIds: string[],
   aggList: UserPeriodAgg[],
-  nick: Map<string, string>,
+  profiles: Map<string, UserProfileMini>,
 ): UserPeriodAgg[] {
   const byUser = new Map(aggList.map((u) => [u.userId, u]));
   const out: UserPeriodAgg[] = [];
@@ -152,9 +164,19 @@ function mergeMembersWithAgg(
     if (existing) {
       out.push(existing);
     } else {
+      const pr = profiles.get(uid);
+      const nick =
+        pr?.nickname && String(pr.nickname).trim()
+          ? String(pr.nickname).trim()
+          : "—";
+      const photo =
+        pr?.photoUrl && String(pr.photoUrl).trim()
+          ? String(pr.photoUrl).trim()
+          : null;
       out.push({
         userId: uid,
-        nickname: nick.get(uid) ?? "—",
+        nickname: nick,
+        photoUrl: photo,
         totalRawScore: 0,
         totalCompleted: 0,
         templateCheckins: 0,
@@ -267,13 +289,25 @@ function applyCheckinSplit(
   }
 }
 
-async function fetchNicknameMap(): Promise<Map<string, string>> {
+async function fetchUserProfileMap(): Promise<Map<string, UserProfileMini>> {
   const supabase = createClient();
   const { data: users, error } = await supabase
     .from("users")
-    .select("id, nickname");
+    .select("id, nickname, photo_url");
   if (error) throw error;
-  return new Map((users ?? []).map((u) => [u.id as string, u.nickname as string]));
+  const m = new Map<string, UserProfileMini>();
+  for (const u of users ?? []) {
+    const id = u.id as string;
+    const rawUrl = u.photo_url as string | null | undefined;
+    m.set(id, {
+      nickname: (u.nickname as string) ?? "—",
+      photoUrl:
+        typeof rawUrl === "string" && rawUrl.trim().length > 0
+          ? rawUrl.trim()
+          : null,
+    });
+  }
+  return m;
 }
 
 /**
@@ -336,13 +370,13 @@ export async function fetchLeaderboardStatsAndUserAggregates(
   stats: LeaderboardDailyStatRow[];
   users: UserPeriodAgg[];
 }> {
-  const [stats, nick, sdgMap, splitMap] = await Promise.all([
+  const [stats, profiles, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
-    fetchNicknameMap(),
+    fetchUserProfileMap(),
     fetchLeaderboardUserSdgGoalsMap(period),
     fetchLeaderboardUserCheckinSplitMap(period),
   ]);
-  const list = aggregateUserList(stats, nick);
+  const list = aggregateUserList(stats, profiles);
   applyCoveredSdgIds(list, sdgMap);
   applyCheckinSplit(list, splitMap);
   return { stats, users: list };
@@ -391,17 +425,17 @@ export async function fetchGroupPeriodStats(
   groupId: string,
   period: LeaderboardPeriod,
 ): Promise<GroupPeriodStats> {
-  const [stats, nick, memberIds, sdgMap] = await Promise.all([
+  const [stats, profiles, memberIds, sdgMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
-    fetchNicknameMap(),
+    fetchUserProfileMap(),
     fetchGroupMemberIds(groupId),
     fetchLeaderboardUserSdgGoalsMap(period),
   ]);
   const idSet = new Set(memberIds);
-  const filteredAgg = aggregateUserList(stats, nick).filter((u) =>
+  const filteredAgg = aggregateUserList(stats, profiles).filter((u) =>
     idSet.has(u.userId),
   );
-  const fullList = mergeMembersWithAgg(memberIds, filteredAgg, nick);
+  const fullList = mergeMembersWithAgg(memberIds, filteredAgg, profiles);
   applyCoveredSdgIds(fullList, sdgMap);
 
   let totalRaw = 0;
@@ -433,7 +467,7 @@ export async function fetchGroupPeriodStats(
     longestStreak > 0 && longestStreakUserId
       ? {
           nickname:
-            nick.get(longestStreakUserId) ??
+            profiles.get(longestStreakUserId)?.nickname ??
             fullList.find((x) => x.userId === longestStreakUserId)?.nickname ??
             "—",
         }
@@ -455,16 +489,18 @@ export async function fetchGroupMemberLeaderboard(
   dimension: LeaderboardDimension,
   page: number = 1,
 ): Promise<GroupMemberLeaderboardResult> {
-  const [stats, nick, memberIds, sdgMap, splitMap] = await Promise.all([
+  const [stats, profiles, memberIds, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
-    fetchNicknameMap(),
+    fetchUserProfileMap(),
     fetchGroupMemberIds(groupId),
     fetchLeaderboardUserSdgGoalsMap(period),
     fetchLeaderboardUserCheckinSplitMap(period),
   ]);
   const idSet = new Set(memberIds);
-  const agg = aggregateUserList(stats, nick).filter((u) => idSet.has(u.userId));
-  const list = mergeMembersWithAgg(memberIds, agg, nick);
+  const agg = aggregateUserList(stats, profiles).filter((u) =>
+    idSet.has(u.userId),
+  );
+  const list = mergeMembersWithAgg(memberIds, agg, profiles);
   applyCoveredSdgIds(list, sdgMap);
   applyCheckinSplit(list, splitMap);
   const weighted = computeWeightedRanks(list);
@@ -497,13 +533,13 @@ export async function fetchGroupsLeaderboard(
   dimension: LeaderboardDimension,
   page: number = 1,
 ): Promise<GroupsLeaderboardResult> {
-  const [stats, nick, sdgMap, splitMap] = await Promise.all([
+  const [stats, profiles, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
-    fetchNicknameMap(),
+    fetchUserProfileMap(),
     fetchLeaderboardUserSdgGoalsMap(period),
     fetchLeaderboardUserCheckinSplitMap(period),
   ]);
-  const userList = aggregateUserList(stats, nick);
+  const userList = aggregateUserList(stats, profiles);
   applyCoveredSdgIds(userList, sdgMap);
   applyCheckinSplit(userList, splitMap);
   const userMap = new Map(userList.map((u) => [u.userId, u]));
@@ -592,14 +628,14 @@ export async function fetchPersonalLeaderboardSnapshot(
   period: LeaderboardPeriod,
 ): Promise<PersonalLeaderboardSnapshot> {
   const supabase = createClient();
-  const [stats, nick, sdgMap, splitMap, customPeriod] = await Promise.all([
+  const [stats, profiles, sdgMap, splitMap, customPeriod] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
-    fetchNicknameMap(),
+    fetchUserProfileMap(),
     fetchLeaderboardUserSdgGoalsMap(period),
     fetchLeaderboardUserCheckinSplitMap(period),
     fetchUserCustomPeriodStats(userId, period),
   ]);
-  const list = aggregateUserList(stats, nick);
+  const list = aggregateUserList(stats, profiles);
   applyCoveredSdgIds(list, sdgMap);
   applyCheckinSplit(list, splitMap);
   const userMap = new Map(list.map((u) => [u.userId, u]));
@@ -652,7 +688,7 @@ export async function fetchPersonalLeaderboardSnapshot(
   const groupList = mergeMembersWithAgg(
     memberIds,
     list.filter((u) => idSet.has(u.userId)),
-    nick,
+    profiles,
   );
   applyCoveredSdgIds(groupList, sdgMap);
 

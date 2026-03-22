@@ -9,6 +9,34 @@ const CHART_INNER_PX = 112;
 /** 每欄最小寬度：避免窄螢幕 flex 擠成單一可見色塊，並在點位多時改以橫向捲動閱讀 */
 const BAR_COL_MIN_PX = 24;
 
+function MemberBarAvatar({
+  nickname,
+  photoUrl,
+}: {
+  nickname: string;
+  photoUrl: string | null;
+}) {
+  if (photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photoUrl}
+        alt=""
+        width={28}
+        height={28}
+        className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-[var(--color-primary-pale)]"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  const t = nickname.trim();
+  return (
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-xs font-semibold text-[var(--color-primary-dark)]">
+      {t ? t.slice(0, 1) : "?"}
+    </div>
+  );
+}
+
 export function GlobalDailyCompletionBars({
   points,
   valueSuffix = "次完成",
@@ -77,7 +105,7 @@ export function SdgDistributionBars({
     <ul className="space-y-2.5">
       {rows.map((r) => {
         const meta = SDG_COLORS[r.sdgId];
-        const label = meta?.label ?? `SDG ${r.sdgId}`;
+        const goalLabel = meta?.label ?? "—";
         const pct = Math.round((r.count / denom) * 1000) / 10;
         const barPct = Math.min(100, (r.count / denom) * 100);
         const accent = meta?.text ?? "var(--color-primary-dark)";
@@ -85,13 +113,17 @@ export function SdgDistributionBars({
           <li key={r.sdgId}>
             <div className="mb-0.5 flex justify-between gap-2 text-xs">
               <span
-                className="inline-flex max-w-[70%] truncate rounded-full px-2 py-0.5 font-medium"
+                className="inline-flex max-w-[78%] items-center gap-1 truncate rounded-full px-2 py-0.5 text-[10px] font-semibold"
                 style={{
-                  background: meta?.bg ?? "var(--color-primary-pale)",
+                  backgroundColor: meta?.bg ?? "var(--color-primary-pale)",
                   color: accent,
                 }}
+                title={`SDG ${r.sdgId} ${goalLabel}`}
               >
-                {label}
+                <span className="shrink-0 tabular-nums">SDG {r.sdgId}</span>
+                <span className="min-w-0 truncate font-medium opacity-95">
+                  {goalLabel}
+                </span>
               </span>
               <span className="shrink-0 tabular-nums font-semibold text-[var(--color-ink)]">
                 {pct}%
@@ -100,7 +132,7 @@ export function SdgDistributionBars({
                 </span>
               </span>
             </div>
-            <div className="h-3 overflow-hidden rounded-full bg-[var(--color-white)] shadow-inner shadow-black/5">
+            <div className="h-3 overflow-hidden rounded-full bg-[var(--color-surface)] shadow-inner shadow-black/5">
               <div
                 className="h-full rounded-full transition-[width]"
                 style={{
@@ -132,6 +164,7 @@ export function GroupMemberCountBars({ rows }: { rows: RankedRow[] }) {
             <div className="flex w-7 shrink-0 items-center justify-center">
               <RankMark rank={r.rank} size="sm" />
             </div>
+            <MemberBarAvatar nickname={r.nickname} photoUrl={r.photoUrl} />
             <span className="min-w-0 truncate text-[var(--color-ink)]">
               {r.nickname}
             </span>

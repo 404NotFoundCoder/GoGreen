@@ -467,6 +467,33 @@ function avatarLetter(name: string) {
   return t ? t.slice(0, 1) : "?";
 }
 
+function LeaderboardUserAvatar({
+  nickname,
+  photoUrl,
+}: {
+  nickname: string;
+  photoUrl: string | null;
+}) {
+  if (photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photoUrl}
+        alt=""
+        width={44}
+        height={44}
+        className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-[var(--color-primary-pale)]"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  return (
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
+      {avatarLetter(nickname)}
+    </div>
+  );
+}
+
 function PersonalLeaderboardBody({
   p,
   period,
@@ -825,9 +852,10 @@ export function LeaderboardShell() {
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <RankMark rank={row.rank} />
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
-                      {avatarLetter(row.nickname)}
-                    </div>
+                    <LeaderboardUserAvatar
+                      nickname={row.nickname}
+                      photoUrl={row.photoUrl}
+                    />
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-[var(--color-ink)]">
                         {row.nickname}
@@ -864,7 +892,7 @@ export function LeaderboardShell() {
               key={`global-charts-${period}`}
               className="grid min-w-0 gap-4 lg:grid-cols-2"
             >
-              <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+              <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
                 <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                   {dailyCompletionTitle(
                     globalCharts.data.dailyChartMode,
@@ -882,7 +910,7 @@ export function LeaderboardShell() {
                   </div>
                 </div>
               </div>
-              <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+              <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
                 <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                   SDG 行動分布
                 </h3>
@@ -896,7 +924,7 @@ export function LeaderboardShell() {
                 </div>
               </div>
               <div className="min-w-0 lg:col-span-2">
-                <GlobalActionCompletionSection period={period} />
+                <GlobalActionCompletionSection />
               </div>
             </div>
           ) : dimension === "weighted" && globalCharts.loading ? (
@@ -1019,7 +1047,7 @@ export function LeaderboardShell() {
                       </div>
                     </div>
                   </div>
-                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
                     <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                       SDG 行動分布（本群）
                     </h3>
@@ -1085,9 +1113,10 @@ export function LeaderboardShell() {
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <RankMark rank={row.rank} />
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
-                            {avatarLetter(row.nickname)}
-                          </div>
+                          <LeaderboardUserAvatar
+                            nickname={row.nickname}
+                            photoUrl={row.photoUrl}
+                          />
                           <div className="min-w-0">
                             <p className="truncate font-semibold text-[var(--color-ink)]">
                               {row.nickname}

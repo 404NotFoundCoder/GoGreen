@@ -1,32 +1,54 @@
 "use client";
 
-import { periodScopeLabel } from "@/components/leaderboard/LeaderboardPeriodBar";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   customRatePct,
   fetchCustomTitleCellParticipants,
-  fetchCustomTitleDayDensityMap,
+  fetchCustomTitleDayDensityMapForRange,
+  fetchCustomTitlePhotoDatesSetForRange,
   fetchTemplateItemCellParticipants,
-  fetchTemplateItemDayDensityMap,
+  fetchTemplateItemDayDensityMapForRange,
   templateRatePct,
   type CellParticipant,
   type CustomTitleStatRow,
   type TemplateItemStatRow,
 } from "@/lib/supabase/leaderboardActionHeatmap";
-import { getLeaderboardDateBounds } from "@/lib/utils/leaderboardPeriod";
-import type { LeaderboardPeriod } from "@/lib/utils/leaderboard";
+import type { ActionCompletionPeriod } from "@/lib/utils/leaderboard";
 import {
-  resolveHeatmapLayoutForPeriod,
+  actionCompletionScopeLabel,
+  getActionCompletionDateBounds,
+} from "@/lib/utils/leaderboardPeriod";
+import {
+  resolveHeatmapLayoutForActionCompletion,
+  resolveHeatmapLayoutForDateRange,
   type HeatmapLayout,
 } from "@/lib/utils/heatmapLayout";
-import { getTodayString, getYearStartString } from "@/lib/utils/date";
-import { ChevronDown, X } from "lucide-react";
+import { eachDateStringInRange, getTodayString } from "@/lib/utils/date";
+import { SDG_COLORS } from "@/constants/sdg";
+import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
+import { Calendar, Camera, ChevronDown, X } from "lucide-react";
 import { getISODay, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { TIMEZONE } from "@/constants/config";
 import { useGlobalActionCompletionStats } from "@/hooks/useGlobalActionCompletionStats";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+const ACTION_COMPLETION_PERIODS: {
+  id: ActionCompletionPeriod;
+  label: string;
+}[] = [
+  { id: "today", label: "今日" },
+  { id: "week", label: "本週" },
+  { id: "month", label: "本月" },
+];
 
 const HEAT_BG = [
   "bg-[var(--color-muted)]/25",
@@ -50,6 +72,33 @@ type RowKey =
   | { kind: "template"; itemId: string }
   | { kind: "custom"; title: string };
 
+const MAX_CUSTOM_RANGE_DAYS = 366;
+
+function SdgTagStrip({ ids }: { ids: number[] }) {
+  const uniq = [
+    ...new Set(ids.filter((n) => Number.isFinite(n) && n >= 1 && n <= 17)),
+  ].sort((a, b) => a - b);
+  if (uniq.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1.5">
+      {uniq.map((id) => {
+        const c = SDG_COLORS[id];
+        if (!c) return null;
+        return (
+          <span
+            key={id}
+            className="inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
+            style={{ backgroundColor: c.bg, color: c.text }}
+            title={c.label}
+          >
+            SDG {id}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function keyString(k: RowKey): string {
   return k.kind === "template" ? `t:${k.itemId}` : `c:${k.title}`;
 }
@@ -59,17 +108,73 @@ function ActionDensityHeatmap({
   byDate,
   todayStr,
   onCellClick,
+  photoMarkDates,
 }: {
   layout: HeatmapLayout;
   byDate: Map<string, number>;
   todayStr: string;
   onCellClick: (date: string) => void;
+  /** 自訂行動：該日有佐證圖之日期（顯示角標） */
+  photoMarkDates?: Set<string>;
 }) {
   const max = useMemo(() => {
     let m = 0;
     for (const v of byDate.values()) if (v > m) m = v;
     return m > 0 ? m : 1;
   }, [byDate]);
+
+  /** 自訂長區間 GitHub 欄：偏好略小於舊版 12px；桌機寬度不足時縮格免橫向捲動，手機固定偏好尺寸可捲動 */
+  const githubWrapRef = useRef<HTMLDivElement>(null);
+  const [githubCellPx, setGithubCellPx] = useState(10);
+  const isGithubLayout =
+    layout.kind !== "week_cards" && layout.kind !== "month";
+  const githubN =
+    layout.kind === "github" ? layout.weekCols.length : 0;
+
+  useLayoutEffect(() => {
+    if (!isGithubLayout || githubN === 0) return;
+    const el = githubWrapRef.current;
+    if (!el) return;
+    const PREFERRED = 10;
+    const MIN = 7;
+    const SIDEBAR = 20;
+    const GAP = 1;
+
+    const apply = () => {
+      const node = githubWrapRef.current;
+      if (!node) return;
+      const desktop = window.matchMedia("(min-width: 768px)").matches;
+      const avail = node.clientWidth;
+      if (avail < 24) return;
+      if (!desktop) {
+        setGithubCellPx(PREFERRED);
+        return;
+      }
+      const natural = SIDEBAR + githubN * PREFERRED + githubN * GAP;
+      if (natural <= avail) {
+        setGithubCellPx(PREFERRED);
+        return;
+      }
+      const raw = (avail - SIDEBAR - githubN * GAP) / githubN;
+      const next = Math.max(MIN, Math.min(PREFERRED, Math.floor(raw)));
+      setGithubCellPx(Number.isFinite(next) && next > 0 ? next : PREFERRED);
+    };
+
+    const run = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(apply);
+      });
+    };
+    run();
+    const ro = new ResizeObserver(run);
+    ro.observe(el);
+    const mq = window.matchMedia("(min-width: 768px)");
+    mq.addEventListener("change", run);
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener("change", run);
+    };
+  }, [isGithubLayout, githubN]);
 
   const cell = (date: string | null) => {
     if (!date) {
@@ -85,6 +190,11 @@ function ActionDensityHeatmap({
     const lv = densityLevel(n, max);
     const bg = HEAT_BG[lv] ?? HEAT_BG[0];
     const md = formatInTimeZone(parseISO(`${date}T12:00:00`), TIMEZONE, "M/d");
+    const hasPhoto =
+      photoMarkDates?.has(date) &&
+      !future &&
+      n > 0;
+    const titleHint = hasPhoto ? "含佐證圖 · " : "";
     return (
       <button
         type="button"
@@ -92,19 +202,27 @@ function ActionDensityHeatmap({
         title={
           future
             ? `${md} · 尚未到達`
-            : `${md} · ${n} 人次${n > 0 ? "（點擊看名單）" : ""}`
+            : `${md} · ${titleHint}${n} 人次${n > 0 ? "（點擊看名單）" : ""}`
         }
         onClick={() => {
           if (!future && n > 0) onCellClick(date);
         }}
         className={[
-          "aspect-square w-full min-h-0 min-w-0 rounded-[2px] border border-[var(--color-muted)]/20 transition",
+          "relative aspect-square w-full min-h-0 min-w-0 rounded-[2px] border border-[var(--color-muted)]/20 transition",
           bg,
           future || n <= 0
             ? "cursor-default opacity-50"
             : "cursor-pointer hover:ring-2 hover:ring-[var(--color-primary)]/40",
         ].join(" ")}
-      />
+      >
+        {hasPhoto ? (
+          <Camera
+            className="pointer-events-none absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--color-ink)] drop-shadow-[0_0_3px_rgba(255,255,255,0.95)]"
+            strokeWidth={2.75}
+            aria-hidden
+          />
+        ) : null}
+      </button>
     );
   };
 
@@ -131,19 +249,41 @@ function ActionDensityHeatmap({
   }
 
   if (layout.kind === "month") {
+    const mc = 34;
     return (
-      <div className="mt-2 w-full min-w-0">
-        <div className="mb-1 grid grid-cols-7 gap-px text-center text-[9px] text-[var(--color-subtle)]">
-          {["一", "二", "三", "四", "五", "六", "日"].map((x) => (
-            <span key={x}>{x}</span>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-px [grid-template-columns:repeat(7,minmax(0,1fr))]">
-          {layout.cells.map((d, i) => (
-            <div key={d ?? `e-${i}`} className="min-w-0">
-              {cell(d)}
-            </div>
-          ))}
+      <div className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5">
+        <div className="mx-auto w-max">
+          <div
+            className="mb-1 grid gap-px text-center text-[9px] text-[var(--color-subtle)]"
+            style={{ gridTemplateColumns: `repeat(7, ${mc}px)` }}
+          >
+            {["一", "二", "三", "四", "五", "六", "日"].map((x) => (
+              <span key={x}>{x}</span>
+            ))}
+          </div>
+          <div
+            className="grid gap-px"
+            style={{ gridTemplateColumns: `repeat(7, ${mc}px)` }}
+          >
+            {layout.cells.map((d, i) => (
+              <div key={d ?? `e-${i}`} className="min-w-0">
+                {d ? (
+                  <div
+                    className="shrink-0 [&>button]:h-full [&>button]:w-full [&>button]:min-h-0 [&>button]:min-w-0 [&>button]:rounded-[2px] [&>button]:p-0"
+                    style={{ width: mc, height: mc }}
+                  >
+                    {cell(d)}
+                  </div>
+                ) : (
+                  <div
+                    className="shrink-0 rounded-[2px] bg-transparent"
+                    style={{ width: mc, height: mc }}
+                    aria-hidden
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -151,9 +291,17 @@ function ActionDensityHeatmap({
 
   const { weekCols, monthLabels } = layout;
   const n = weekCols.length;
+  const ghPx =
+    Number.isFinite(githubCellPx) && githubCellPx > 0
+      ? Math.min(14, Math.max(5, githubCellPx))
+      : 10;
   const weekdayRows = ["一", "", "三", "", "五", "", "日"] as const;
   const templateCols =
-    n === 0 ? "1.25rem" : (`1.25rem repeat(${n}, minmax(12px, 1fr))` as const);
+    n === 0 ? "1.25rem" : (`1.25rem repeat(${n}, ${ghPx}px)` as const);
+  const ghGridWidth =
+    n > 0
+      ? `calc(1.25rem + ${n} * ${ghPx}px + ${n}px)`
+      : undefined;
 
   const bodyCells = Array.from({ length: 7 }, (_, dayIdx) => {
     const left = (
@@ -170,14 +318,20 @@ function ActionDensityHeatmap({
       return (
         <div
           key={`c-${wi}-${dayIdx}`}
-          className="min-w-0 self-stretch"
+          className="flex min-h-0 min-w-0 items-center justify-center"
           style={{ gridColumn: wi + 2, gridRow: dayIdx + 2 }}
         >
           {date ? (
-            cell(date)
+            <div
+              className="shrink-0 [&>button]:h-full [&>button]:w-full [&>button]:min-h-0 [&>button]:min-w-0 [&>button]:rounded-[2px] [&>button]:p-0"
+              style={{ width: ghPx, height: ghPx }}
+            >
+              {cell(date)}
+            </div>
           ) : (
             <div
-              className="aspect-square w-full min-h-0 rounded-[2px] bg-transparent"
+              className="shrink-0 rounded-[2px] border border-[var(--color-muted)]/15 bg-[var(--color-muted)]/10"
+              style={{ width: ghPx, height: ghPx }}
               aria-hidden
             />
           )}
@@ -187,21 +341,17 @@ function ActionDensityHeatmap({
     return [left, ...cells];
   }).flat();
 
-  const gridWidthStyle =
-    n > 0
-      ? ({
-          width: `max(100%, calc(1.25rem + ${n} * 12px))`,
-        } as const)
-      : undefined;
-
   return (
-    <div className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x md:overflow-x-visible">
+    <div
+      ref={githubWrapRef}
+      className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x"
+    >
       <div
-        className="grid min-w-full max-w-none gap-px pb-1"
+        className="grid w-max gap-px pb-1"
         style={{
           gridTemplateColumns: templateCols,
-          gridTemplateRows: "auto repeat(7, auto)",
-          ...gridWidthStyle,
+          gridTemplateRows: `auto repeat(7, ${ghPx}px)`,
+          ...(ghGridWidth ? { width: ghGridWidth } : {}),
         }}
       >
         <div style={{ gridColumn: 1, gridRow: 1 }} aria-hidden />
@@ -224,26 +374,60 @@ function ActionDensityHeatmap({
   );
 }
 
-export function GlobalActionCompletionSection({
-  period,
-}: {
-  period: LeaderboardPeriod;
-}) {
-  const pl = periodScopeLabel(period);
-  const bounds = getLeaderboardDateBounds(period);
-  const chartStart = period === "all" ? getYearStartString() : bounds.start;
-  const chartEnd = bounds.end;
+export function GlobalActionCompletionSection() {
   const todayStr = getTodayString();
-  const layout = useMemo(
-    () => resolveHeatmapLayoutForPeriod(period, chartStart, chartEnd),
-    [period, chartStart, chartEnd],
+  const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
+  const [actionPeriod, setActionPeriod] =
+    useState<ActionCompletionPeriod>("week");
+  const [customStart, setCustomStart] = useState(() =>
+    getActionCompletionDateBounds("week").start,
   );
+  const [customEnd, setCustomEnd] = useState(() =>
+    getActionCompletionDateBounds("week").end,
+  );
+  const [pickerStart, setPickerStart] = useState(
+    () => getActionCompletionDateBounds("week").start,
+  );
+  const [pickerEnd, setPickerEnd] = useState(
+    () => getActionCompletionDateBounds("week").end,
+  );
+  const [rangeError, setRangeError] = useState<string | null>(null);
+  const periodBarRef = useRef<HTMLDivElement>(null);
+  const [rangePanelOpen, setRangePanelOpen] = useState(false);
+
+  const effectiveBounds = useMemo(() => {
+    if (rangeMode === "preset") {
+      return getActionCompletionDateBounds(actionPeriod);
+    }
+    return { start: customStart, end: customEnd };
+  }, [rangeMode, actionPeriod, customStart, customEnd]);
+
+  const chartStart = effectiveBounds.start;
+  const chartEnd = effectiveBounds.end;
+
+  const pl =
+    rangeMode === "custom"
+      ? "自訂區間"
+      : actionCompletionScopeLabel(actionPeriod);
+
+  const layout = useMemo(() => {
+    if (rangeMode === "custom") {
+      return resolveHeatmapLayoutForDateRange(chartStart, chartEnd);
+    }
+    return resolveHeatmapLayoutForActionCompletion(actionPeriod, chartEnd);
+  }, [rangeMode, actionPeriod, chartStart, chartEnd]);
 
   const { templateRows, customRows, loadingList, listError } =
-    useGlobalActionCompletionStats(period);
+    useGlobalActionCompletionStats(effectiveBounds);
 
   const [expanded, setExpanded] = useState<RowKey | null>(null);
+  useEffect(() => {
+    setExpanded(null);
+  }, [chartStart, chartEnd]);
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
+  const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [densityLoading, setDensityLoading] = useState(false);
 
   const [modal, setModal] = useState<{
@@ -256,21 +440,63 @@ export function GlobalActionCompletionSection({
   const [photoTab, setPhotoTab] = useState<"list" | "gallery">("list");
 
   useEffect(() => {
+    if (!rangePanelOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!periodBarRef.current?.contains(e.target as Node)) {
+        setRangePanelOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRangePanelOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [rangePanelOpen]);
+
+  useEffect(() => {
     if (!expanded) {
       setDensityMap(new Map());
+      setPhotoMarkDates(new Set());
       return;
     }
     let cancelled = false;
     setDensityLoading(true);
     void (async () => {
       try {
-        const m =
-          expanded.kind === "template"
-            ? await fetchTemplateItemDayDensityMap(period, expanded.itemId)
-            : await fetchCustomTitleDayDensityMap(period, expanded.title);
-        if (!cancelled) setDensityMap(m);
+        const { start, end } = effectiveBounds;
+        if (expanded.kind === "template") {
+          const m = await fetchTemplateItemDayDensityMapForRange(
+            start,
+            end,
+            expanded.itemId,
+          );
+          if (!cancelled) {
+            setDensityMap(m);
+            setPhotoMarkDates(new Set());
+          }
+        } else {
+          const [m, photoSet] = await Promise.all([
+            fetchCustomTitleDayDensityMapForRange(start, end, expanded.title),
+            fetchCustomTitlePhotoDatesSetForRange(
+              start,
+              end,
+              expanded.title,
+            ).catch(() => new Set<string>()),
+          ]);
+          if (!cancelled) {
+            setDensityMap(m);
+            setPhotoMarkDates(photoSet);
+          }
+        }
       } catch {
-        if (!cancelled) setDensityMap(new Map());
+        if (!cancelled) {
+          setDensityMap(new Map());
+          setPhotoMarkDates(new Set());
+        }
       } finally {
         if (!cancelled) setDensityLoading(false);
       }
@@ -278,7 +504,7 @@ export function GlobalActionCompletionSection({
     return () => {
       cancelled = true;
     };
-  }, [expanded, period]);
+  }, [expanded, effectiveBounds]);
 
   const openCell = useCallback(async (date: string, key: RowKey) => {
     setModal({ date, key, participants: [], loading: true });
@@ -308,6 +534,32 @@ export function GlobalActionCompletionSection({
     return [...customRows].sort((a, b) => customRatePct(b) - customRatePct(a));
   }, [customRows]);
 
+  function applyPickerRange(): boolean {
+    let s = pickerStart;
+    let e = pickerEnd;
+    if (!s || !e) {
+      setRangeError("請選擇開始與結束日期");
+      return false;
+    }
+    if (s > e) [s, e] = [e, s];
+    if (e > todayStr) e = todayStr;
+    if (s > todayStr) s = todayStr;
+    const days = eachDateStringInRange(s, e).length;
+    if (days <= 0) {
+      setRangeError("請選擇有效日期");
+      return false;
+    }
+    if (days > MAX_CUSTOM_RANGE_DAYS) {
+      setRangeError(`區間最長 ${MAX_CUSTOM_RANGE_DAYS} 天`);
+      return false;
+    }
+    setRangeError(null);
+    setCustomStart(s);
+    setCustomEnd(e);
+    setRangeMode("custom");
+    return true;
+  }
+
   function renderRow(
     rank: number,
     title: string,
@@ -316,6 +568,7 @@ export function GlobalActionCompletionSection({
     denomLine: string,
     rowKey: RowKey,
     maxRate: number,
+    sdgIds: number[],
   ) {
     const open = expanded && keyString(expanded) === keyString(rowKey);
     const barPct =
@@ -323,7 +576,7 @@ export function GlobalActionCompletionSection({
     return (
       <div
         key={keyString(rowKey)}
-        className="rounded-xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-white)]/80"
+        className="rounded-xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-white)] shadow-sm"
       >
         <button
           type="button"
@@ -361,10 +614,14 @@ export function GlobalActionCompletionSection({
         <p className="px-3 pb-2 text-[10px] text-[var(--color-subtle)]">
           {denomLine}
         </p>
+        <SdgTagStrip ids={sdgIds} />
         {open ? (
           <div className="border-t border-[var(--color-muted)]/40 px-2 pb-3 pt-2">
-            <p className="mb-1 text-[10px] text-[var(--color-subtle)]">
-              與「我的」相同時間粒度之密度圖；色越深表示該日完成人次越高。
+            <p className="mb-1 text-[10px] leading-snug text-[var(--color-subtle)]">
+              與卡片上方所選「{pl}」區間一致；色越深表示該日完成人次越高。
+              {rowKey.kind === "custom"
+                ? " 自訂行動：右下角相機表示該日至少一筆打卡含佐證圖。"
+                : null}
             </p>
             {densityLoading ? (
               <Skeleton className="h-32 w-full rounded-lg" />
@@ -374,6 +631,9 @@ export function GlobalActionCompletionSection({
                 byDate={densityMap}
                 todayStr={todayStr}
                 onCellClick={(d) => void openCell(d, rowKey)}
+                photoMarkDates={
+                  rowKey.kind === "custom" ? photoMarkDates : undefined
+                }
               />
             )}
           </div>
@@ -400,19 +660,126 @@ export function GlobalActionCompletionSection({
         行動完成率載入失敗：{listError}（請套用 migration
         `20260322123000_leaderboard_action_density_rpcs.sql`、
         `20260322141000_custom_title_stats_list_days.sql`、
-        `20260322142000_custom_title_stats_include_list_only.sql`）
+        `20260322142000_custom_title_stats_include_list_only.sql`、
+        `20260322150000_action_completion_sdg_ids.sql`）
       </p>
     );
   }
 
   return (
     <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
-      <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-        各項完成率（點開看密度圖）
-      </h3>
-      <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-        「{pl}」· 公版：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）×
-        100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（依標題彙總）× 100%。
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+          各項完成率（點開看密度圖）
+        </h3>
+        <div
+          ref={periodBarRef}
+          className="relative w-full min-w-0 sm:ml-auto sm:w-auto"
+        >
+          <div className="flex w-full justify-end">
+            <div
+              className="grid w-full max-w-none grid-cols-4 gap-1 rounded-full border border-[var(--color-muted)]/60 bg-[var(--color-white)]/70 p-1 shadow-sm sm:w-[17.5rem]"
+              role="group"
+              aria-label="各項完成率統計區間"
+            >
+            {ACTION_COMPLETION_PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setRangeMode("preset");
+                  setActionPeriod(p.id);
+                  setRangePanelOpen(false);
+                }}
+                className={[
+                  "flex min-h-[2.35rem] min-w-0 items-center justify-center rounded-full px-1 py-1 text-center text-[11px] font-medium leading-tight transition sm:text-xs",
+                  rangeMode === "preset" && actionPeriod === p.id
+                    ? "bg-[var(--color-primary-strong)] text-[var(--color-white)] shadow-sm"
+                    : "text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)]/50",
+                ].join(" ")}
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                if (rangePanelOpen) {
+                  setRangePanelOpen(false);
+                } else {
+                  setPickerStart(chartStart);
+                  setPickerEnd(chartEnd);
+                  setRangeError(null);
+                  setRangePanelOpen(true);
+                }
+              }}
+              className={[
+                "flex min-h-[2.35rem] min-w-0 flex-row items-center justify-center gap-0.5 rounded-full px-0.5 py-0.5 text-center font-medium transition",
+                rangeMode === "custom"
+                  ? "bg-[var(--color-primary-light)] text-[var(--color-primary-dark)] shadow-sm"
+                  : rangePanelOpen
+                    ? "bg-[var(--color-primary-pale)]/80 text-[var(--color-primary-dark)]"
+                    : "text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)]/50",
+              ].join(" ")}
+              aria-expanded={rangePanelOpen}
+              aria-haspopup="dialog"
+              aria-label="自訂日期區間"
+            >
+              <Calendar
+                className="h-3 w-3 shrink-0 opacity-85"
+                aria-hidden
+              />
+              <span className="text-[10px] leading-none sm:text-[11px]">自訂</span>
+              <ChevronDown
+                className={[
+                  "h-2.5 w-2.5 shrink-0 text-[var(--color-subtle)] transition",
+                  rangePanelOpen ? "rotate-180" : "",
+                ].join(" ")}
+                aria-hidden
+              />
+            </button>
+          </div>
+          </div>
+          {rangePanelOpen ? (
+            <div className="absolute left-1/2 top-[calc(100%+0.35rem)] z-[80] w-[min(calc(100vw-1.25rem),30rem)] -translate-x-1/2 overflow-x-hidden overflow-y-auto max-sm:max-h-[min(75vh,34rem)] rounded-2xl border border-[var(--color-muted)]/50 bg-[var(--color-white)] p-4 shadow-xl sm:left-auto sm:right-0 sm:translate-x-0 sm:max-h-none sm:min-w-[22rem] sm:overflow-y-visible sm:w-[28rem]">
+              <DateRangePickerPanel
+                maxDate={todayStr}
+                start={pickerStart}
+                end={pickerEnd}
+                onRangeChange={(s, e) => {
+                  setPickerStart(s);
+                  setPickerEnd(e);
+                  setRangeError(null);
+                }}
+                onClear={() => {
+                  const w = getActionCompletionDateBounds("week");
+                  setPickerStart(w.start);
+                  setPickerEnd(w.end);
+                  setRangeError(null);
+                }}
+              />
+              {rangeError ? (
+                <p className="mb-2 text-xs text-amber-800">{rangeError}</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (applyPickerRange()) setRangePanelOpen(false);
+                }}
+                className="mt-1 w-full rounded-full bg-[var(--color-primary-strong)] px-4 py-2.5 text-xs font-semibold text-[var(--color-white)] shadow-sm transition hover:opacity-95 active:scale-[0.99]"
+              >
+                套用此區間
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-[var(--color-subtle)]">
+        此區間與頁面頂部「本週／本月／至今」分開設定；目前為「{pl}」（
+        {chartStart === chartEnd ? chartStart : `${chartStart}～${chartEnd}`}
+        ）。公版：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）×
+        100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（依標題彙總）×
+        100%。
       </p>
       <div className="mt-3 space-y-2">
         <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
@@ -432,6 +799,7 @@ export function GlobalActionCompletionSection({
               `分母＝${r.periodDays} 天 × ${r.activeUsers} 人（期間內曾打卡者）`,
               { kind: "template", itemId: r.itemId },
               maxTemplateRate,
+              r.sdgIds ?? [],
             ),
           )
         )}
@@ -449,9 +817,10 @@ export function GlobalActionCompletionSection({
               `${r.checkinCount} 次打卡 · ${r.achieverCount} 人曾完成`,
               r.legacyListDenominator
                 ? `分母估算＝${r.onListDays}（區間天數×曾打卡人數；資料庫請套用 migration \`20260322141000_custom_title_stats_list_days.sql\` 改為「列入今日清單」人日）。完成 ${r.checkinCount} 次。`
-                : `分子＝完成 ${r.checkinCount} 次; 分母＝列入今日清單 ${r.onListDays} 人日；。`,
+                : `分母＝列入今日清單 ${r.onListDays} 人日；完成 ${r.checkinCount} 次。`,
               { kind: "custom", title: r.title },
               maxCustomRate,
+              r.sdgIds ?? [],
             ),
           )}
         </div>
@@ -523,9 +892,21 @@ export function GlobalActionCompletionSection({
                         key={p.userId}
                         className="flex items-center gap-3 rounded-xl border border-[var(--color-muted)]/50 px-3 py-2"
                       >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-sm font-semibold text-[var(--color-primary-dark)]">
-                          {p.nickname.slice(0, 1) || "?"}
-                        </div>
+                        {p.avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.avatarUrl}
+                            alt=""
+                            width={36}
+                            height={36}
+                            className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-[var(--color-primary-pale)]"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-sm font-semibold text-[var(--color-primary-dark)]">
+                            {(p.nickname || "?").trim().slice(0, 1) || "?"}
+                          </div>
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-[var(--color-ink)]">
                             {p.nickname}
@@ -562,7 +943,7 @@ export function GlobalActionCompletionSection({
                           key={`${p.userId}-ph`}
                           type="button"
                           onClick={() => setLightbox(p.photoUrl!)}
-                          className="aspect-square overflow-hidden rounded-lg border border-[var(--color-muted)]/60 bg-[var(--color-white)]"
+                          className="relative aspect-square overflow-hidden rounded-lg border border-[var(--color-muted)]/60 bg-[var(--color-white)]"
                           title={p.nickname}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -571,6 +952,24 @@ export function GlobalActionCompletionSection({
                             alt={`${p.nickname} 佐證`}
                             className="h-full w-full object-cover"
                           />
+                          {p.avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={p.avatarUrl}
+                              alt=""
+                              width={24}
+                              height={24}
+                              className="pointer-events-none absolute left-1 top-1 h-6 w-6 rounded-full border-2 border-white/95 object-cover shadow-md ring-1 ring-black/10"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <span
+                              className="pointer-events-none absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/95 bg-[var(--color-primary-pale)] text-[10px] font-bold text-[var(--color-primary-dark)] shadow-md ring-1 ring-black/10"
+                              aria-hidden
+                            >
+                              {(p.nickname || "?").trim().slice(0, 1) || "?"}
+                            </span>
+                          )}
                         </button>
                       ))
                   )}

@@ -332,10 +332,17 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - 所有使用者公開姓名，無隱私選項
 - 主列表每頁最多 `LEADERBOARD_LIMIT` 筆（**20**），超過則「上一頁／下一頁」分頁；**名次為全榜名次**（第 2 頁仍顯示第 21 名起）
+- **成員頭像**：全體榜與群組內榜**主列表**、以及群組內「**各成員完成項數**」列，優先顯示 **`public.users.photo_url`**（Google 等 OAuth 寫入之頭像 URL）；`lib/supabase/leaderboard.ts` 以 **`fetchUserProfileMap()`**（`select id, nickname, photo_url`）與榜單聚合一併載入，**`UserPeriodAgg.photoUrl`** 供 `LeaderboardShell`／`LeaderboardViz` 使用。無 URL 時維持暱稱首字圓形佔位。
 - **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；**完成項次柱狀、SDG 分布、公版／自訂行動完成率＋密度圖**僅在子 tab **「總加權」**時載入與顯示（`useGlobalLeaderboardCharts(..., includeWeightedCharts)`）；其餘子 tab 仍載入四格統計卡所需之 **`topByScore`／`topBySdg`／`topHotAction`**（較輕量）。**即時更新**：主列表與完成項次／SDG 圖表之 hook 監聽 **`user_daily_stats`**（打卡後通常會刷新 stats）；**`GlobalActionCompletionSection`** 另由 **`useGlobalActionCompletionStats`** 監聽 **`daily_checkins`、`user_daily_custom_items`、`user_daily_stats`**（見 [Realtime 規範](#realtime-規範)）。統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
 - 統計面板：參與人數、**分數最高**、**SDG 覆蓋最高**（副標 **`N=…（相異）+ M=…（單日最多）＝合計`**）、**熱門行動（第 1 名，打卡次數）**；皆標註所選期間 `[done]`
-- **總加權**專區圖表：完成項次柱狀（粒度同前）；SDG 行動分布（佔總次數 %）；**`GlobalActionCompletionSection`**——公版項目／自訂標題之完成率列表（點開展開與「我的」相同時間粒度之**密度圖**，色階依該日完成**人次**；點格彈窗列出完成者、佐證照片清單／照片牆）。基礎 migration：`rpc_global_*`、**`20260322123000_leaderboard_action_density_rpcs.sql`**；另見下項補充與 **`20260322140000_resync_default_checklist.sql`**／**`20260322141000_custom_title_stats_list_days.sql`**／**`20260322142000_custom_title_stats_include_list_only.sql`**。
-- **行動完成率公式與「自訂 · 依標題彙總」**：
+- **總加權**專區圖表：**完成項次**柱狀卡為 **白底**（`bg-[var(--color-white)]`），與 SDG 分布卡區隔；SDG 行動分布（佔總次數 %）。
+- **`GlobalActionCompletionSection`**（公版項目／自訂標題完成率＋密度圖）：
+  - **期間列**：**今日／本週／本月／自訂** 四欄 **等寬** 同一膠囊列（**自訂**＝日曆圖示＋「自訂」＋ chevron **同一橫列**）。選 **自訂** 且已套用區間時，該欄為**整格淺綠**選中態（無「使用中」小徽章）。
+  - **自訂區間**：點第四欄開啟 **`DateRangePickerPanel`**（雙月曆、**拖曳**選起訖；`components/ui/DateRangePickerPanel.tsx`）。面板為 **`absolute` 浮層**（錨在期間列容器內），**不推擠**下方完成率列表。套用後 **`useGlobalActionCompletionStats({ start, end })`**，密度圖版面依 **`resolveHeatmapLayoutForDateRange`**（短區間橫向日格、長區間 GitHub 週欄）。
+  - 各列可顯示 **SDG 標籤**（RPC 回傳 `sdg_ids`）；須 **`20260322150000_action_completion_sdg_ids.sql`**。
+  - 點密度圖格之彈窗：**完成者清單／照片牆**；佐證圖仍為 `daily_checkins.photo_url`。若已套用 **`20260322163000_leaderboard_cell_participants_avatar.sql`**，RPC 另回傳 **`avatar_url`**（`users.photo_url`）供頭像；**未套用時**前端仍相容，僅無頭像 URL、以首字代替。
+  - 基礎 migration：**`20260322123000_leaderboard_action_density_rpcs.sql`**；並見 **`20260322140000_resync_default_checklist.sql`**／**`20260322141000_custom_title_stats_list_days.sql`**／**`20260322142000_custom_title_stats_include_list_only.sql`**。
+- **行動完成率公式與「自訂 · 依標題彙總」**（區間＝該卡 **今日／本週／本月** 選擇，非頁首榜單期間）：
   - **公版**：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）× 100%；項目來自 `is_default` 範本。若 DB 與 seed 文案／筆數脫節（例如曾手動改表、`on conflict do nothing` 未覆寫），可執行 **`20260322140000_resync_default_checklist.sql`** 還原 10 筆 canonical 並收斂單一預設範本。
   - **自訂**：完成率＝該標題之 **打卡次數** ÷ **列入今日清單人日數**（`user_daily_custom_items` 依 `custom_items.title` 彙總之列數）× 100%；須 **`20260322141000_custom_title_stats_list_days.sql`**。**列入清單但該期間尚無打卡**之標題仍會出現一列（完成率 0%），見 **`20260322142000_custom_title_stats_include_list_only.sql`**。**彙總鍵為標題字串**：`custom_item_id` 不同只要 **title 完全相同** 就併成榜上一列（全體跨使用者加總）。**範例**：使用者 A 的「帶環保杯」（`id=…a`）與 B 的「帶環保杯」（`id=…b`）→ 一列，列入人日與打卡為兩邊加總。小明週一、週三各把**自己的一筆**自訂加入今日並各完成打卡，標題皆「跑步」→ 列入人日 +2、打卡 +2。若一為「夜跑」、一為「夜跑 」（多一空白）→ **兩列**（字串不完全相同）。若 Supabase 尚未套用新 RPC，前端會暫以舊欄位「區間天數×曾打卡人數」估算分母並於 UI 提示套用 migration，**避免 NaN**。
 
@@ -749,6 +756,8 @@ group by g.id, g.name, g.is_public;
 | `20260322140000_resync_default_checklist.sql` | 僅保留系統預設範本 UUID 為 `is_default`；**upsert 10 筆**公版 `checklist_items`；停用同範本非 canonical 項目；`get_user_template_id` 優先固定預設範本 id |
 | `20260322141000_custom_title_stats_list_days.sql` | `rpc_leaderboard_custom_title_stats` 改回傳 **`on_list_days`**（列入今日清單人日）；自訂完成率分母改為列入清單人日（非「區間天數×人數」估算） |
 | `20260322142000_custom_title_stats_include_list_only.sql` | `rpc_leaderboard_custom_title_stats` 以 **full outer join** 合併打卡與列入清單；**僅列入、尚未打卡**之標題亦回傳（完成率 0%） |
+| `20260322150000_action_completion_sdg_ids.sql` | `rpc_leaderboard_default_template_item_stats`、`rpc_leaderboard_custom_title_stats` 增 **`sdg_ids`**（各項完成率列 SDG 標籤） |
+| `20260322163000_leaderboard_cell_participants_avatar.sql` | `rpc_leaderboard_*_cell_participants` 增 **`avatar_url`**（`users.photo_url`）；**`handle_new_user`** 併寫 Google **`picture`**（選用；完成者頭像與佐證 `photo_url` 分欄） |
 
 前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
 
@@ -1283,6 +1292,17 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-22] v0.10.42 — 排行榜頭像、完成率日期浮層、文件對齊
+
+- `[FEAT]` **`UserPeriodAgg.photoUrl`**：榜單聚合改 **`fetchUserProfileMap`**（`users.nickname` + **`photo_url`**）；**全體／群組內主列表**與 **`GroupMemberCountBars`** 有 URL 則顯示圓形頭像（`referrerPolicy="no-referrer"`），否則暱稱首字
+- `[FIX]` **`GlobalActionCompletionSection`**：**自訂**欄圖示與文字改 **橫排**；日期區間面板改 **`absolute` 浮層**，避免推擠下方版面；自訂選中態移除額外 **ring**（與其他欄視覺一致）
+- `[DOCS]` 「全體排行榜」補頭像與 **`GlobalActionCompletionSection`**（四欄、浮層月曆、SDG、完成者 **`avatar_url` 選用 migration**）；RPC 表補 **`20260322150000`**、**`20260322163000`**
+
+### [2026-03-22] v0.10.41 — 完成項次白底、各項完成率獨立期間
+
+- `[FEAT]` 全體榜「完成項次」柱狀卡改 **白底**；**`GlobalActionCompletionSection`** 內建 **今日／本週／本月** 選擇器（**`ActionCompletionPeriod`**，與頁面頂部榜單期間分離），RPC／密度圖依 **`getActionCompletionDateBounds`**、**`resolveHeatmapLayoutForActionCompletion`**；`leaderboardActionHeatmap` 增 `*ForRange` 與舊 **`LeaderboardPeriod`** 包裝並存；**`useGlobalActionCompletionStats`** 改接 **`ActionCompletionPeriod`**
+- `[DOCS]` 全體排行榜「總加權圖表」小節與 Changelog
 
 ### [2026-03-22] v0.10.40 — 行動完成率 Realtime、自訂列含「僅列入」
 

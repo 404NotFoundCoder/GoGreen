@@ -5,7 +5,7 @@ import {
   getWeekStartString,
   weekCalendarDayStringsContaining,
 } from "@/lib/utils/date";
-import type { LeaderboardPeriod } from "@/lib/utils/leaderboard";
+import type { ActionCompletionPeriod, LeaderboardPeriod } from "@/lib/utils/leaderboard";
 import { addDays, addMonths, getISODay, parseISO, startOfMonth } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 
@@ -127,5 +127,43 @@ export function resolveHeatmapLayoutForPeriod(
   }
   const weekCols = buildGithubWeekColumns(chartStart, chartEnd);
   const monthLabels = buildGithubMonthLabels(weekCols, chartStart, chartEnd);
+  return { kind: "github", weekCols, monthLabels };
+}
+
+/** 各項完成率密度圖：今日＝單日格；本週＝週曆卡；本月＝月曆格（與頁面頂部期間分離） */
+export function resolveHeatmapLayoutForActionCompletion(
+  period: ActionCompletionPeriod,
+  chartEnd: string,
+): HeatmapLayout {
+  if (period === "today") {
+    return { kind: "week_cards", days: [chartEnd] };
+  }
+  if (period === "week") {
+    return {
+      kind: "week_cards",
+      days: weekCalendarDayStringsContaining(chartEnd),
+    };
+  }
+  const ms = getMonthStartString(parseISO(`${chartEnd}T12:00:00`));
+  return {
+    kind: "month",
+    cells: buildMonthCalendarCells(ms, chartEnd),
+  };
+}
+
+/** 自訂起訖日：≤14 日用橫向日卡；更長用 GitHub 週欄（可橫向捲動） */
+export function resolveHeatmapLayoutForDateRange(
+  start: string,
+  end: string,
+): HeatmapLayout {
+  if (start === end) {
+    return { kind: "week_cards", days: [end] };
+  }
+  const days = eachDateStringInRange(start, end);
+  if (days.length > 0 && days.length <= 14) {
+    return { kind: "week_cards", days };
+  }
+  const weekCols = buildGithubWeekColumns(start, end);
+  const monthLabels = buildGithubMonthLabels(weekCols, start, end);
   return { kind: "github", weekCols, monthLabels };
 }

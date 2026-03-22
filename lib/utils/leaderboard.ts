@@ -1,6 +1,8 @@
 import { DEFAULT_ITEM_POINTS, getStreakTierBonus } from "@/constants/scoring";
 
 export type LeaderboardPeriod = "week" | "month" | "all";
+/** 全體榜「各項完成率」區塊專用，與頁面頂部 LeaderboardPeriod 分開 */
+export type ActionCompletionPeriod = "today" | "week" | "month";
 export type LeaderboardDimension = "weighted" | "score" | "count" | "sdg";
 
 /** 期間內各 tier 加成值出現的天數（用於列表說明） */
@@ -9,6 +11,8 @@ export type StreakTierBonusPart = { bonus: number; days: number };
 export type UserPeriodAgg = {
   userId: string;
   nickname: string;
+  /** `public.users.photo_url`（OAuth 頭像等）；無則 UI 用暱稱首字 */
+  photoUrl: string | null;
   /** 期間內分數加總（各完成項 points，`user_daily_stats.raw_score` 日加總） */
   totalRawScore: number;
   /** 期間內完成項目數加總（打卡筆數） */

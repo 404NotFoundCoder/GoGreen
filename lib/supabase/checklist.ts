@@ -349,3 +349,73 @@ export async function uploadCheckinPhotoFile(args: {
   if (uErr) throw uErr;
   return photoUrl;
 }
+
+/** 區間內每日：當日連結的自訂格數、已完成自訂打卡數、是否有佐證圖 */
+export async function fetchUserDayActivityExtrasInRange(
+  userId: string,
+  from: string,
+  to: string,
+): Promise<
+  Map<
+    string,
+    { customTotal: number; customDone: number; hasPhoto: boolean }
+  >
+> {
+  const supabase = createClient();
+  const { data: checkins, error: e1 } = await supabase
+    .from("daily_checkins")
+    .select("date, custom_item_id, photo_url")
+    .eq("user_id", userId)
+    .gte("date", from)
+    .lte("date", to);
+  if (e1) throw e1;
+  const { data: links, error: e2 } = await supabase
+    .from("user_daily_custom_items")
+    .select("date")
+    .eq("user_id", userId)
+    .gte("date", from)
+    .lte("date", to);
+  if (e2) throw e2;
+
+  const m = new Map<
+    string,
+    { customTotal: number; customDone: number; hasPhoto: boolean }
+  >();
+  const ensure = (d: string) => {
+    if (!m.has(d)) {
+      m.set(d, { customTotal: 0, customDone: 0, hasPhoto: false });
+    }
+    return m.get(d)!;
+  };
+  for (const l of links ?? []) {
+    const d = String(l.date).slice(0, 10);
+    ensure(d).customTotal += 1;
+  }
+  for (const c of checkins ?? []) {
+    const d = String(c.date).slice(0, 10);
+    const row = ensure(d);
+    if (c.custom_item_id) row.customDone += 1;
+    if (c.photo_url) row.hasPhoto = true;
+  }
+  return m;
+}
+
+/** 清空該日所有打卡與「今日」自訂連結（不刪除 `custom_items` 本體） */
+export async function clearUserCalendarDay(args: {
+  userId: string;
+  date: string;
+}): Promise<void> {
+  const supabase = createClient();
+  const { error: e1 } = await supabase
+    .from("daily_checkins")
+    .delete()
+    .eq("user_id", args.userId)
+    .eq("date", args.date);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase
+    .from("user_daily_custom_items")
+    .delete()
+    .eq("user_id", args.userId)
+    .eq("date", args.date);
+  if (e2) throw e2;
+}

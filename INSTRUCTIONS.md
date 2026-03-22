@@ -172,10 +172,10 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 | ---------------- | ----------------------------------------- |
 | `/`              | 首頁（未登入；玩法說明、**Google 登入 CTA** `HomeGoogleStartButton`）；OAuth 失敗回 **`/?error=auth`** 時由 **`HomeAuthErrorBanner`** 顯示「登入失敗，請重試。」；**已登入**則 **`app/page.tsx` 伺服端 `getUser()`** 與 **`(app)/layout` 同源**，直接 **`redirect('/today')`**（**勿**再用客戶端 `getSession()` 導向，以免與伺服端不一致造成循環）。**無 `/login` 路由。** |
 | `/auth/callback` | Supabase OAuth callback：`code` 換取 session 成功則導向 `next`（預設 `/today`）；失敗或無 `code` 則 **`redirect('/?error=auth')`**。 |
-| `/today`         | 今日檢核（需登入）                        |
+| `/today`         | 今日檢核（需登入）；可選 **`?date=yyyy-MM-dd`**（UTC+8 曆日，≤ 今日）由 **`TodayPageClient`** 讀取並餵 **`TodayChecklist`**／**`useTodayChecklist`** |
 | `/leaderboard`   | 排行榜：全體／群組內／各群間／個人（需登入） |
 | `/groups`        | 群組（需登入）                            |
-| `/profile`       | 個人：`ProfileForm`（暱稱）；`ProfileAnalyticsShell`（`LeaderboardPeriodBar` 期間、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）（需登入） |
+| `/profile`       | 個人：`ProfileForm`（暱稱）；`ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileChartsSection`：**五卡**、**分數表＋SDG**、**`ProfileRecordsSection`**〔分頁：各項完成率／每週紀錄、填寫紀錄〕）（需登入） |
 
 **登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 **`redirect('/')`**（首頁）。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
 
@@ -183,7 +183,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 **對應程式：**
 
-- **Hooks（`hooks/`）**：`useTodayChecklist`、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGlobalActionCompletionStats`、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`、`useProfile`（完整檔名見「分層職責說明」）
+- **Hooks（`hooks/`）**：`useTodayChecklist`（**參數**：選定曆日 `yyyy-MM-dd`）、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGlobalActionCompletionStats`、`useProfileActionCompletionStats`（個人頁各項完成率）、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`、`useProfile`（完整檔名見「分層職責說明」）
 - **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
 
 ---
@@ -195,7 +195,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` 顯示當日公版行動清單（依使用者範本；群組專屬公版清單規格見「公版清單管理」）
 - `[done]` 每項可 toggle 勾選；左側**蓋章互動**：未完成為虛線空圓；點擊完成時 **lucide-react `Leaf`**（與 `BrandMark` logo 同圖示）自上方落下（旋轉／scale 彈跳，約 **280ms**）、同時漣漪（#87986A，約 **380ms**）、8 顆粒子自章心散開（主色隨機，約 **0.32–0.48s**）、整列 **spring** 位移（右 8px → 左 4px → 歸位，約 **320ms**）；完成態背景 `#E9F5DB`、邊框 `#97A97C`、標題 `#718355` 與刪除線由左往右劃滿；再點可取消勾選、還原虛線圓與初始樣式
 - `[done]` 完成約一半時頂部**深色膠囊** toast 滑入「🌱 已完成一半！繼續加油」（約 2.5s 後收起）；**全部完成**時：約 **280ms** 後以 **DOM 彩帶**（`confettiFall`，約 60 片）→ 約 **850ms** 後全螢幕慶祝 overlay（`rgba(233,245,219,0.95)`、**`Leaf` 圖示**、`fadeIn`／`bounceIn`／`slideUp`）；overlay 顯示後 **1500ms** 自動關閉，亦可按「太棒了」提前關閉；`prefers-reduced-motion: reduce` 時略過彩帶、直接顯示 overlay；**全完成慶祝（撒花＋overlay）僅在使用者本次勾選／取消後再勾選，剛好由「未全滿」變成「全滿」且 API 成功時觸發**（`fullCompletionCelebrationTick`）；**初次載入若已全完成**則不播放慶祝動畫，僅顯示清單下方「今日全部完成」內聯提示
-- `[done]` 頂部統計：進度條軌 `#CFD5BD`、填色 `#87986A`、高度 6px、`width` 過渡 **0.4s** `cubic-bezier(0.34, 1.56, 0.64, 1)`；今日得分數字 bump 動畫；連續天數 tier 徽章底色 `#FAEEDA`、字色 `#854F0B`
+- `[done]` 頂部統計：進度條軌 `#CFD5BD`、填色 `#87986A`、高度 6px、`width` 過渡 **0.4s** `cubic-bezier(0.34, 1.56, 0.64, 1)`；今日得分數字 bump 動畫；連續天數 tier 徽章底色 `#FAEEDA`、字色 `#854F0B`；**無**右上角「⋯」選單（已移除）
+- `[done]` 支援 **`/today?date=yyyy-MM-dd`**（UTC+8 曆日、≤ 今日）：**`app/(app)/today/TodayPageClient.tsx`**（`Suspense` + `useSearchParams`）→ **`TodayChecklist`**／**`useTodayChecklist(selectedDate)`**
 - `[done]` 已完成項目可上傳佐證照片（檔案選擇）至 Storage，並寫入 `daily_checkins.photo_url`；可點縮圖或「檢視大圖」以 **`ImageLightbox`** 全螢幕瀏覽（Esc／點背景關閉）
 - `[tbd]` 拖曳上傳佐證檔案（目前僅檔案選擇）
 - `[done]` **自訂行動與常用收藏**為**單一卡片**（`#gg-custom-favorites-section`）：頂部標題列說明 → 上段「新增項目」（`AddCustomForm` `embedded`）→ 分隔線 → 下段「常用收藏」（`FavoritesPanel` `embedded`、背景略區隔）；避免兩張獨立全寬卡片重複邊框
@@ -371,20 +372,21 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### 個人記錄 `[部分完成]`
 
-> **`/profile`**：暱稱（點筆編輯）`[done]`；**分析區**為 `ProfileAnalyticsShell`：`LeaderboardPeriodBar` 選期間 → `ProfileLeaderboardSummary`（我的排行摘要）→ `ProfileChartsSection`（打卡密度／**分數表**／SDG）→ `ProfileDailyStats`（近 14 天 `user_daily_stats` 原始值表格）`[done]`。**本週／本月**與排行榜期間一致；選 **「至今」** 時，圖表／熱力等為 **今年 1/1～今日**（`getYearStartString`～`getTodayString`），與全體榜「至今」累計區間不同；「我的排行摘要」仍依榜單「至今」邏輯。`ProfileAnalyticsShell` 頂部說明已改稱「分數表」而非「完成項次」。
+> **`/profile`**：暱稱（點筆編輯）`[done]`；**分析區**為 `ProfileAnalyticsShell`：`LeaderboardPeriodBar` 選期間 → `ProfileChartsSection`：**五卡**（累計得分、打卡天數、最長 streak、SDG 覆蓋幾項、單日最高 SDG 覆蓋數；資料 **`fetchUserProfileCharts` → `summaryTop`**，與分數表／SDG 區間一致）、**分數表＋SDG 行動分布**（白底 **`lg:grid-cols-2`**，與全體榜總加權區視覺一致）、**`ProfileRecordsSection`**（主實作檔；**`ProfileActionCompletionSection.tsx`** 僅 re-export 同名別名）。**本週／本月**與排行榜期間一致；選 **「至今」** 時五卡與分數表／SDG 為 **今年 1/1～今日**。已移除「我的排行摘要」與首屏 **五階打卡密度熱力**（`fetchUserProfileCharts` 仍回傳 **`heatmapRows`** 供擴充，頁面不繪製）。
+
+**`ProfileRecordsSection`（各項完成率／每週紀錄）** `[done]`
+
+- **分頁**：**各項完成率**、**每週紀錄**；**填寫紀錄**按鈕（＋文字）開啟選日對話框（標題「填寫紀錄」、**去填寫** 進入該日編輯；日期欄可 **`showPicker()`** 整欄點開日曆；僅 **X** 關閉，**不可**點遮罩關閉）。
+- **統計區間**（與頁頂 `LeaderboardPeriodBar` **分開**）：今日／本週／本月／自訂；**`getActionCompletionDateBounds`**／**`resolveHeatmapLayoutForActionCompletion`**／**`resolveHeatmapLayoutForDateRange`** 與全體榜 **`GlobalActionCompletionSection`** 同構。
+- **各項完成率**：**`useProfileActionCompletionStats`**；RPC **`20260322200000_profile_action_completion_rpcs.sql`**（`rpc_profile_template_item_stats`、`rpc_profile_custom_title_stats`、日密度 `rpc_profile_*_day_density`，僅 **`auth.uid()`**）。展開列為**二元**密度（有打卡 **#849B6D**／無 **白**）；密度區 **`overflow-y-visible`** 避免多餘直向捲軸。點格開「我的完成紀錄」modal（仍可點遮罩關閉，與日彈窗不同）。
+- **每週紀錄**：**`fetchUserDailyStatsInRange`** + **`fetchUserDayActivityExtrasInRange`**（`lib/supabase/checklist.ts`：自訂格數、自訂完成數、當日是否有佐證圖）；僅列 **`completed_count > 0`**。整列可點開 **檢視**；**編輯**／**刪除**（**`clearUserCalendarDay`**，確認後清空該日打卡與 `user_daily_custom_items` 連結）。**日彈窗**：內嵌 **`TodayChecklist`** + **`useTodayChecklist(日期)`**；**檢視**＝**`variant="readonly"`**（**`ChecklistStampCard`／`ChecklistRow`** **`readOnly`**：不灰隱、不可勾選，**可**檢視佐證縮圖與大圖）；**編輯**＝互動，底欄 **儲存並關閉**（關閉並 refetch 列表；勾選仍即時寫入 DB）。遮罩淡色 **`rgba(45,52,40,0.22)`**、**不可**點外關閉；標題列 **日期置中**，**上／下一天** 限目前紀錄區間（`chartStart`～`chartEnd`）。
 
 - **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間分數加總、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
 - 統計數字全部顯示**原始值**，不標準化（與榜單標準化分並存於不同區塊）
-- **打卡密度與色階**（`ProfileChartsSection` 第一區；資料來源 `fetchUserProfileCharts` → 期間內每日 `completed_count`／`total_items`／`raw_score`）：
-  - **五階色階**（圖例：**無／少／一半／多／全完成**）：優先依當日 **`completed_count / total_items`** 比例分級——未滿為 **少**（≤3 項且比例 &lt;50%）、**一半**（≥50% 且未全滿）、**多**（其餘未全滿）；**全完成**為當日清單全勾；無 `total_items` 時改以完成項數區分。**圖例色塊**與 `HEAT_BG` 同步，語意為主、非固定「幾項」門檻。
-  - **密度上方摘要卡**（三格）：**累計得分**（期間內 `raw_score` 加總）、**打卡天數**（`completed_count > 0` 之日數）、**最長 streak**（期間內依曆日連續有打卡之最長天數）；與所選本週／本月／今年至今區間一致。
-  - **Hover／tooltip（全期間共用）**：`M/d · N 項完成 · 分`（`raw_score`）；未打卡為 `0 項完成 · 0 分`；未來日為「尚未到達」。以原生 `title` 呈現（行動裝置可無 hover，仍可靠長按或無障礙朗讀延伸）。
-  - **本週**：橫向 **七日卡**（週一～週日），每卡僅顯示 **完成項數（N 項）**，不顯示分數；**今日**以 **inset ring**（或等效內縮強調）標示，**勿**用 `ring-offset` 疊在橫向捲動邊緣（易裁切破圖）；**未來日期**為留白卡＋「·」。色階同上五階。
-  - **本月**：**月曆格**（七欄對齊週一～週日）；**星期列與日期格必須共用全寬**（同一 `grid-cols-7`＋`minmax(0,1fr)`，**禁止**僅對下方格子設 `max-w` 而表頭全寬，否則會跑版）；格內顯示 **N 項**（0 項留白），色階同上五階。
-  - **至今**（個人頁）：後端統計區間仍為 **今年 1/1～今日**（與**分數表**／SDG 一致）；**熱力圖**則繪製 **今年完整 1/1～12/31** 之曆週欄（`getYearStartString`～`getYearEndString`），未來日空白；**GitHub 貢獻圖式**小方格（欄＝曆週、列＝週一～週日，`gap-px`）；**桌面**（`md+`）熱力區與摘要卡**同寬**（週欄 `flex-1`、格 `aspect-square`）；**手機**（`&lt;md`）週欄固定 **`w-3`**、整段 **`overflow-x-auto`** 可橫向滑動，避免擠壓跑版；**頂列橫向標示月份（M 月）**；方格**不**顯示項數。
 - **分數表**（`GlobalDailyCompletionBars`）：與全體榜**同粒度規則**（`buildCompletionChartSeries`／`DailyChartMode`），圖表為 **SVG 平滑折線＋面積**；個人資料來源為 **`fetchUserProfileCharts` → `dailyScores`**（單日 **`raw_score`**）。後端仍另建 **`dailyCompletions`**（`completed_count` 系列）供他處擴充，**個人頁折線不讀該序列**。X 軸曆日以 **`M/d`**；圖寬依容器 **`ResizeObserver`** 填滿（點多時最小點距可橫向捲動）。
 - 個人 **SDG 行動分布**（長條圖）`[done]`（`rpc_my_sdg_distribution`）
-- Streak 紀錄（**目前連續**／**歷史最長**並列於個人專區）`[planned]`（現僅於榜單「個人」視角顯示**期間內**最佳單日 streak；近 14 天表可側面參考）
+- **附錄（歷史／未掛載）**：個人頁曾於 **`ProfileChartsSection` 首區** 顯示 **五階**打卡密度熱力（`HEAT_BG`、`completed_count/total_items` 比例、本週卡／本月曆／至今 GitHub 欄等），已於 **v0.10.49** 起自頁面移除；若復用可參考 Changelog **v0.10.29～v0.10.33** 與 **`GlobalActionCompletionSection`** 之 **`ActionDensityHeatmap`**。
+- Streak 紀錄（**目前連續**／**歷史最長**並列於個人專區）`[planned]`（榜單「個人」視角與 **每週紀錄**表可見期間／單日 streak；尚無獨立 streak 專區）
 
 ---
 
@@ -495,9 +497,9 @@ lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `inv
 constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
 ```
 
-**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGlobalLeaderboardCharts.ts`、`useGlobalActionCompletionStats.ts`、`useGroupMemberLeaderboard.ts`、`useGroupsLeaderboard.ts`、`usePersonalLeaderboard.ts`、`useGroupLeaderboardCharts.ts`、`useGroupPeriodStats.ts`、`useGroups.ts`、`useProfile.ts`、`useProfileNickname.ts`
+**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGlobalLeaderboardCharts.ts`、`useGlobalActionCompletionStats.ts`、`useProfileActionCompletionStats.ts`、`useGroupMemberLeaderboard.ts`、`useGroupsLeaderboard.ts`、`usePersonalLeaderboard.ts`、`useGroupLeaderboardCharts.ts`、`useGroupPeriodStats.ts`、`useGroups.ts`、`useProfile.ts`、`useProfileNickname.ts`
 
-**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
+**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳、**`fetchUserDayActivityExtrasInRange`**／**`clearUserCalendarDay`** 等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardActionHeatmap.ts`、`leaderboardAnalytics.ts`
 
 **元件分兩種：**
 
@@ -760,6 +762,7 @@ group by g.id, g.name, g.is_public;
 | `20260321230100_group_sdg_distribution_rpc.sql` | `rpc_group_sdg_distribution`（群組成員期間內 SDG 次數） |
 | `20260321231000_leaderboard_user_sdg_goals_rpc.sql` | `rpc_leaderboard_user_sdg_goals`（每位使用者期間相異 SDG，供 SDG 覆蓋維度） |
 | `20260322180000_group_hot_actions_rpc.sql` | `rpc_group_hot_actions`（群組成員期間內依標題之熱門行動，與 `rpc_global_hot_actions` 同構） |
+| `20260322200000_profile_action_completion_rpcs.sql` | `rpc_profile_template_item_stats`、`rpc_profile_custom_title_stats`、日密度 `rpc_profile_template_item_day_density`／`rpc_profile_custom_title_day_density`（**僅**目前使用者 `auth.uid()`；**`grant execute … to authenticated`**，**非** `anon`；供 **`ProfileRecordsSection`**「各項完成率」列表與展開密度） |
 | `20260321232000_leaderboard_user_checkin_split_rpc.sql` | `rpc_leaderboard_user_checkin_split`（公版／自訂打卡次數拆項；`lib/supabase/leaderboard.ts` 使用） |
 | `20260322120000_leaderboard_group_members_rpc.sql` | `rpc_group_member_user_ids`（呼叫者須為該群成員，回傳該群**全部** `user_id`）；`rpc_leaderboard_group_rows`（已登入：全表 `group_members` 併 `groups` 名稱／公開旗標，供各群間榜與個人快照） |
 | `20260322123000_leaderboard_action_density_rpcs.sql` | 全體「行動完成率／密度」：`rpc_leaderboard_default_template_item_stats`、`rpc_leaderboard_template_item_day_density`、`rpc_leaderboard_template_item_cell_participants`、自訂標題彙總之 `rpc_leaderboard_custom_title_*`（初版；自訂分母後續由下列檔覆寫） |
@@ -1322,6 +1325,19 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ---
 
+### [2026-03-23] v0.10.50 — 個人「每週紀錄」分頁、填寫紀錄、`/today?date=` 與文件對齊
+
+- `[FEAT]` **`ProfileRecordsSection`**（**`ProfileActionCompletionSection`** 僅 re-export）：**各項完成率**／**每週紀錄**分頁、共用區間選擇、**填寫紀錄**（選日→**去填寫**）、週表列與日彈窗（檢視唯讀可見佐證、編輯＋**儲存並關閉**、區間內換日、遮罩不可點外關）、**`clearUserCalendarDay`**／**`fetchUserDayActivityExtrasInRange`**
+- `[FEAT]` **`/today?date=`**：**`TodayPageClient`**；**`useTodayChecklist(date)`**；**`TodayChecklist`** **`readOnly`**／**`ChecklistStampCard` `readOnly`**（檢視不灰隱）；統計卡移除「⋯」
+- `[DOCS]` **本文件**與 **README**：路由表、**個人記錄**整節、`hooks`／`lib/supabase` 表、今日檢核 bullet；**v0.10.34** 沿革 `/profile` 敘述改為 **`ProfileRecordsSection`**（取代已併入之 **`ProfileDailyStats`** 獨立區塊）
+
+### [2026-03-22] v0.10.49 — 個人頁：五卡、分數表／SDG 雙欄、個人各項完成率
+
+- `[FEAT]` **`/profile`**：移除 **`ProfileLeaderboardSummary`**；**`ProfileChartsSection`** 改為頂部 **五卡**（累計得分、打卡天數、最長 streak、SDG 覆蓋幾項、單日最高 SDG 覆蓋數）、**分數表＋SDG** 白底 **`lg:grid-cols-2`**（對齊全體榜）；刪除原**打卡密度／熱力**區塊（後續 **v0.10.50** 以 **`ProfileRecordsSection`** 擴充分頁與每週表）
+- `[FEAT]` 個人各項完成率（初版 **`ProfileActionCompletionSection`**，後合併為 **`ProfileRecordsSection`**）：**`useProfileActionCompletionStats`**＋**`20260322200000_profile_action_completion_rpcs.sql`**；密度格 **有打卡綠／無白**（後改深綠 **#849B6D**）
+- `[FEAT]` **`fetchUserProfileCharts`** 增 **`summaryTop`** 供五卡
+- `[DOCS]` 路由／個人記錄條目與 RPC 表補 **`20260322200000`**
+
 ### [2026-03-22] v0.10.48 — 修復首頁與 `/today` 循環跳轉
 
 - `[FIX]` **`app/page.tsx`**：已登入改由**伺服端** `createClient()` + **`getUser()`** 後 **`redirect('/today')`**；刪除 **`HomeAuthRedirect`**（客戶端 **`getSession()`** 與 **`(app)/layout`** 的 **`getUser()`** 不一致時會 **`/` ↔ `/today` 瘋狂跳轉**）
@@ -1409,7 +1425,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ### [2026-03-22] v0.10.34 — 未 commit 變更與文件對齊
 
-- `[DOCS]` **路由與登入**：`/auth/callback` 失敗時導向（後於 v0.10.46 改為 `/?error=auth`）；`/profile` 路由列改為 `ProfileForm` + `ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）
+- `[DOCS]` **路由與登入**：`/auth/callback` 失敗時導向（後於 v0.10.46 改為 `/?error=auth`）；`/profile` 路由列改為 `ProfileForm` + `ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileChartsSection`；後於 v0.10.49 移除 `ProfileLeaderboardSummary`、增完成率區；**v0.10.50** 起 **`ProfileRecordsSection`** 併每週紀錄／填寫紀錄，**`ProfileDailyStats`** 不再獨立掛載）
 - `[DOCS]` **分層職責**：`hooks/` 補齊排行榜相關 hook；`lib/utils` 範例補 `leaderboardPeriod.ts`；**資料庫**新增「排行榜／分析用 RPC」表（含 `rpc_leaderboard_user_sdg_goals`、`rpc_leaderboard_user_checkin_split` 等四個 migration 檔）
 - `[DOCS]` **README**：本地資料庫步驟補上述四個 RPC migration；功能表「個人資料」一行與實作對齊
 - `[FIX]` **`AppShell`**：主內容外層與 page 容器加 **`min-w-0`**，避免 flex 版面橫向溢出
@@ -1559,7 +1575,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 - `[FEAT]` 今日檢核：`AddCustomForm` 區分「加入今日」／「僅存入常用」；`FavoritesPanel` 常用收藏與「加入今日」；`useTodayChecklist` 串 `fetchFavoriteCustomItems`／`linkCustomItemToToday`／`uploadCheckinPhotoFile`；`ChecklistStampCard` 外層容器＋已完成時佐證上傳列
 - `[FEAT]` 全體排行榜：`fetchGlobalLeaderboard` 回傳 `{ rows, totalParticipants }`，`GlobalLeaderboardPanel` 顯示本期參與人數
-- `[FEAT]` `/profile`：`ProfileDailyStats` 近 14 天每日統計表格（`fetchUserDailyStatsRecent`）
+- `[FEAT]` `/profile`：`ProfileDailyStats` 近 14 天每日統計表格（`fetchUserDailyStatsRecent`）（**已於後續版本**併入 **`ProfileRecordsSection`「每週紀錄」**＋區間 `fetchUserDailyStatsInRange`，**`ProfileDailyStats` 元件**未再掛載於 shell）
 - `[DOCS]` 系統功能規格／排行榜／個人記錄／空狀態與本 Changelog 對齊現況
 
 ### [2026-03-21] v0.10.7 — INSTRUCTIONS 補齊與現況對齊

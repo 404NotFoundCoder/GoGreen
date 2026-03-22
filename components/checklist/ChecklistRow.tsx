@@ -12,6 +12,7 @@ type Props = {
   photoUrl?: string | null;
   onUploadPhoto?: (file: File) => void;
   photoUploadBusy?: boolean;
+  readOnly?: boolean;
 };
 
 export function ChecklistRow({
@@ -23,11 +24,13 @@ export function ChecklistRow({
   photoUrl,
   onUploadPhoto,
   photoUploadBusy,
+  readOnly,
 }: Props) {
   return (
     <ChecklistStampCard
       done={done}
       disabled={disabled}
+      readOnly={readOnly}
       onToggle={onToggle}
       title={item.title}
       description={item.description}

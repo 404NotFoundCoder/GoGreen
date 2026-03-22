@@ -297,4 +297,94 @@ export async function fetchCustomTitleCellParticipants(
   }));
 }
 
+export async function fetchProfileTemplateItemStatsForRange(
+  start: string,
+  end: string,
+): Promise<TemplateItemStatRow[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("rpc_profile_template_item_stats", {
+    p_start: start,
+    p_end: end,
+  });
+  if (error) throw error;
+  const rows = data as
+    | {
+        item_id: string;
+        title: string;
+        sort_order: number;
+        period_days: number;
+        active_users: number | string;
+        checkin_count: number | string;
+        achiever_count: number | string;
+        sdg_ids?: unknown;
+      }[]
+    | null;
+  return (rows ?? []).map((r) => ({
+    itemId: r.item_id,
+    title: r.title,
+    sortOrder: r.sort_order,
+    periodDays: r.period_days,
+    activeUsers: Number(r.active_users),
+    checkinCount: Number(r.checkin_count),
+    achieverCount: Number(r.achiever_count),
+    sdgIds: parseSdgIds(r.sdg_ids),
+  }));
+}
+
+export async function fetchProfileCustomTitleStatsForRange(
+  start: string,
+  end: string,
+  limit = 40,
+): Promise<CustomTitleStatRow[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("rpc_profile_custom_title_stats", {
+    p_start: start,
+    p_end: end,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  const rows = data as Record<string, unknown>[] | null;
+  return (rows ?? []).map(mapCustomTitleStatRow);
+}
+
+export async function fetchProfileTemplateItemDayDensityMapForRange(
+  start: string,
+  end: string,
+  itemId: string,
+): Promise<Map<string, number>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_profile_template_item_day_density",
+    { p_start: start, p_end: end, p_item_id: itemId },
+  );
+  if (error) throw error;
+  const rows = data as { d: string; participant_count: number | string }[] | null;
+  const m = new Map<string, number>();
+  for (const r of rows ?? []) {
+    const k = typeof r.d === "string" ? r.d : String(r.d).slice(0, 10);
+    m.set(k, Number(r.participant_count));
+  }
+  return m;
+}
+
+export async function fetchProfileCustomTitleDayDensityMapForRange(
+  start: string,
+  end: string,
+  title: string,
+): Promise<Map<string, number>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_profile_custom_title_day_density",
+    { p_start: start, p_end: end, p_title: title },
+  );
+  if (error) throw error;
+  const rows = data as { d: string; checkin_count: number | string }[] | null;
+  const m = new Map<string, number>();
+  for (const r of rows ?? []) {
+    const k = typeof r.d === "string" ? r.d : String(r.d).slice(0, 10);
+    m.set(k, Number(r.checkin_count));
+  }
+  return m;
+}
+
 export { templateRatePct, customRatePct };

@@ -1,19 +1,27 @@
 "use client";
 
+import { TodayChecklist } from "@/components/checklist/TodayChecklist";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   customRatePct,
   fetchCustomTitleCellParticipants,
-  fetchCustomTitleDayDensityMapForRange,
-  fetchCustomTitlePhotoDatesSetForRange,
+  fetchProfileCustomTitleDayDensityMapForRange,
+  fetchProfileTemplateItemDayDensityMapForRange,
   fetchTemplateItemCellParticipants,
-  fetchTemplateItemDayDensityMapForRange,
   templateRatePct,
   type CellParticipant,
   type CustomTitleStatRow,
   type TemplateItemStatRow,
 } from "@/lib/supabase/leaderboardActionHeatmap";
+import {
+  clearUserCalendarDay,
+  fetchUserDayActivityExtrasInRange,
+} from "@/lib/supabase/checklist";
+import { fetchUserDailyStatsInRange } from "@/lib/supabase/stats";
+import type { DailyStatRow } from "@/lib/supabase/stats";
+import { useAuthContext } from "@/context/AuthContext";
 import type { ActionCompletionPeriod } from "@/lib/utils/leaderboard";
 import {
   actionCompletionScopeLabel,
@@ -27,11 +35,23 @@ import {
 import { eachDateStringInRange, getTodayString } from "@/lib/utils/date";
 import { SDG_COLORS } from "@/constants/sdg";
 import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
-import { Calendar, Camera, ChevronDown, X } from "lucide-react";
+import {
+  Calendar,
+  Camera,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Leaf,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { getISODay, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { TIMEZONE } from "@/constants/config";
-import { useGlobalActionCompletionStats } from "@/hooks/useGlobalActionCompletionStats";
+import { useProfileActionCompletionStats } from "@/hooks/useProfileActionCompletionStats";
 import {
   useCallback,
   useEffect,
@@ -50,23 +70,9 @@ const ACTION_COMPLETION_PERIODS: {
   { id: "month", label: "本月" },
 ];
 
-const HEAT_BG = [
-  "bg-[var(--color-muted)]/25",
-  "bg-[var(--color-primary-strong)]/22",
-  "bg-[var(--color-primary-strong)]/40",
-  "bg-[var(--color-primary-strong)]/58",
-  "bg-[var(--color-primary-strong)]",
-] as const;
-
-function densityLevel(n: number, max: number): number {
-  if (n <= 0) return 0;
-  if (max <= 0) return 1;
-  const r = n / max;
-  if (r >= 0.85) return 4;
-  if (r >= 0.55) return 3;
-  if (r >= 0.25) return 2;
-  return 1;
-}
+/** 個人密度：有打卡＝深綠、無＝白 */
+const BINARY_YES = "bg-[#849B6D] border-[#6d8059]/40";
+const BINARY_NO = "bg-[var(--color-white)] border-[var(--color-muted)]/35";
 
 type RowKey =
   | { kind: "template"; itemId: string }
@@ -103,26 +109,17 @@ function keyString(k: RowKey): string {
   return k.kind === "template" ? `t:${k.itemId}` : `c:${k.title}`;
 }
 
-function ActionDensityHeatmap({
+function ProfileBinaryDensityHeatmap({
   layout,
   byDate,
   todayStr,
   onCellClick,
-  photoMarkDates,
 }: {
   layout: HeatmapLayout;
   byDate: Map<string, number>;
   todayStr: string;
   onCellClick: (date: string) => void;
-  /** 自訂行動：該日有佐證圖之日期（顯示角標） */
-  photoMarkDates?: Set<string>;
 }) {
-  const max = useMemo(() => {
-    let m = 0;
-    for (const v of byDate.values()) if (v > m) m = v;
-    return m > 0 ? m : 1;
-  }, [byDate]);
-
   /** 自訂長區間 GitHub 欄：偏好略小於舊版 12px；桌機寬度不足時縮格免橫向捲動，手機固定偏好尺寸可捲動 */
   const githubWrapRef = useRef<HTMLDivElement>(null);
   const [githubCellPx, setGithubCellPx] = useState(10);
@@ -186,45 +183,41 @@ function ActionDensityHeatmap({
     }
     const future = date > todayStr;
     const n = future ? 0 : (byDate.get(date) ?? 0);
-    const lv = densityLevel(n, max);
-    const bg = HEAT_BG[lv] ?? HEAT_BG[0];
+    const has = n > 0;
     const md = formatInTimeZone(parseISO(`${date}T12:00:00`), TIMEZONE, "M/d");
-    const hasPhoto = photoMarkDates?.has(date) && !future && n > 0;
-    const titleHint = hasPhoto ? "含佐證圖 · " : "";
+    const surface = future
+      ? "border-[var(--color-muted)]/20 bg-[var(--color-muted)]/10 opacity-50"
+      : has
+        ? BINARY_YES
+        : BINARY_NO;
     return (
       <button
         type="button"
-        disabled={future || n <= 0}
+        disabled={future || !has}
         title={
           future
             ? `${md} · 尚未到達`
-            : `${md} · ${titleHint}${n} 人次${n > 0 ? "（點擊看名單）" : ""}`
+            : has
+              ? `${md} · 有打卡（點擊看紀錄）`
+              : `${md} · 無打卡`
         }
         onClick={() => {
-          if (!future && n > 0) onCellClick(date);
+          if (!future && has) onCellClick(date);
         }}
         className={[
-          "relative aspect-square w-full min-h-0 min-w-0 rounded-[2px] border border-[var(--color-muted)]/20 transition",
-          bg,
-          future || n <= 0
-            ? "cursor-default opacity-50"
+          "relative aspect-square block h-full min-h-0 w-full min-w-0 appearance-none rounded-[2px] border p-0 transition",
+          surface,
+          future || !has
+            ? "cursor-default"
             : "cursor-pointer hover:ring-2 hover:ring-[var(--color-primary)]/40",
         ].join(" ")}
-      >
-        {hasPhoto ? (
-          <Camera
-            className="pointer-events-none absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--color-ink)] drop-shadow-[0_0_3px_rgba(255,255,255,0.95)]"
-            strokeWidth={2.75}
-            aria-hidden
-          />
-        ) : null}
-      </button>
+      />
     );
   };
 
   if (layout.kind === "week_cards") {
     return (
-      <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+      <div className="mt-2 flex gap-1.5 overflow-x-auto overflow-y-visible pb-1">
         {layout.days.map((d) => (
           <div
             key={d}
@@ -247,7 +240,7 @@ function ActionDensityHeatmap({
   if (layout.kind === "month") {
     const mc = 34;
     return (
-      <div className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5">
+      <div className="mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible pb-0.5">
         <div className="mx-auto w-max">
           <div
             className="mb-1 grid gap-px text-center text-[9px] text-[var(--color-subtle)]"
@@ -338,7 +331,7 @@ function ActionDensityHeatmap({
   return (
     <div
       ref={githubWrapRef}
-      className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x"
+      className="mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible pb-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x"
     >
       <div
         className="grid w-max gap-px pb-1"
@@ -368,8 +361,9 @@ function ActionDensityHeatmap({
   );
 }
 
-export function GlobalActionCompletionSection() {
+export function ProfileRecordsSection() {
   const todayStr = getTodayString();
+  const [mainTab, setMainTab] = useState<"completion" | "weekly">("completion");
   const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
   const [actionPeriod, setActionPeriod] =
     useState<ActionCompletionPeriod>("week");
@@ -411,17 +405,15 @@ export function GlobalActionCompletionSection() {
     return resolveHeatmapLayoutForActionCompletion(actionPeriod, chartEnd);
   }, [rangeMode, actionPeriod, chartStart, chartEnd]);
 
+  const { user } = useAuthContext();
   const { templateRows, customRows, loadingList, listError } =
-    useGlobalActionCompletionStats(effectiveBounds);
+    useProfileActionCompletionStats(effectiveBounds);
 
   const [expanded, setExpanded] = useState<RowKey | null>(null);
   useEffect(() => {
     setExpanded(null);
   }, [chartStart, chartEnd]);
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
-  const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [densityLoading, setDensityLoading] = useState(false);
 
   const [modal, setModal] = useState<{
@@ -432,6 +424,44 @@ export function GlobalActionCompletionSection() {
   } | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [photoTab, setPhotoTab] = useState<"list" | "gallery">("list");
+
+  const [weeklyRows, setWeeklyRows] = useState<DailyStatRow[]>([]);
+  const [weeklyExtras, setWeeklyExtras] = useState<
+    Map<string, { customTotal: number; customDone: number; hasPhoto: boolean }>
+  >(() => new Map());
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyError, setWeeklyError] = useState<string | null>(null);
+  const [dayDialog, setDayDialog] = useState<{
+    date: string;
+    mode: "view" | "edit";
+  } | null>(null);
+  const [addDateOpen, setAddDateOpen] = useState(false);
+  const [addDatePick, setAddDatePick] = useState("");
+  const [deleteDate, setDeleteDate] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const refetchWeekly = useCallback(async () => {
+    if (!user?.id) return;
+    setWeeklyLoading(true);
+    setWeeklyError(null);
+    try {
+      const [stats, extras] = await Promise.all([
+        fetchUserDailyStatsInRange(user.id, chartStart, chartEnd),
+        fetchUserDayActivityExtrasInRange(user.id, chartStart, chartEnd),
+      ]);
+      setWeeklyRows([...stats].reverse());
+      setWeeklyExtras(extras);
+    } catch (e) {
+      setWeeklyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWeeklyLoading(false);
+    }
+  }, [user?.id, chartStart, chartEnd]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void refetchWeekly();
+  }, [user?.id, refetchWeekly]);
 
   useEffect(() => {
     if (!rangePanelOpen) return;
@@ -454,7 +484,6 @@ export function GlobalActionCompletionSection() {
   useEffect(() => {
     if (!expanded) {
       setDensityMap(new Map());
-      setPhotoMarkDates(new Set());
       return;
     }
     let cancelled = false;
@@ -463,34 +492,22 @@ export function GlobalActionCompletionSection() {
       try {
         const { start, end } = effectiveBounds;
         if (expanded.kind === "template") {
-          const m = await fetchTemplateItemDayDensityMapForRange(
+          const m = await fetchProfileTemplateItemDayDensityMapForRange(
             start,
             end,
             expanded.itemId,
           );
-          if (!cancelled) {
-            setDensityMap(m);
-            setPhotoMarkDates(new Set());
-          }
+          if (!cancelled) setDensityMap(m);
         } else {
-          const [m, photoSet] = await Promise.all([
-            fetchCustomTitleDayDensityMapForRange(start, end, expanded.title),
-            fetchCustomTitlePhotoDatesSetForRange(
-              start,
-              end,
-              expanded.title,
-            ).catch(() => new Set<string>()),
-          ]);
-          if (!cancelled) {
-            setDensityMap(m);
-            setPhotoMarkDates(photoSet);
-          }
+          const m = await fetchProfileCustomTitleDayDensityMapForRange(
+            start,
+            end,
+            expanded.title,
+          );
+          if (!cancelled) setDensityMap(m);
         }
       } catch {
-        if (!cancelled) {
-          setDensityMap(new Map());
-          setPhotoMarkDates(new Set());
-        }
+        if (!cancelled) setDensityMap(new Map());
       } finally {
         if (!cancelled) setDensityLoading(false);
       }
@@ -500,19 +517,24 @@ export function GlobalActionCompletionSection() {
     };
   }, [expanded, effectiveBounds]);
 
-  const openCell = useCallback(async (date: string, key: RowKey) => {
-    setModal({ date, key, participants: [], loading: true });
-    setPhotoTab("list");
-    try {
-      const rows =
-        key.kind === "template"
-          ? await fetchTemplateItemCellParticipants(date, key.itemId)
-          : await fetchCustomTitleCellParticipants(date, key.title);
-      setModal({ date, key, participants: rows, loading: false });
-    } catch {
-      setModal({ date, key, participants: [], loading: false });
-    }
-  }, []);
+  const openCell = useCallback(
+    async (date: string, key: RowKey) => {
+      setModal({ date, key, participants: [], loading: true });
+      setPhotoTab("list");
+      try {
+        const rows =
+          key.kind === "template"
+            ? await fetchTemplateItemCellParticipants(date, key.itemId)
+            : await fetchCustomTitleCellParticipants(date, key.title);
+        const uid = user?.id;
+        const mine = uid ? rows.filter((p) => p.userId === uid) : rows;
+        setModal({ date, key, participants: mine, loading: false });
+      } catch {
+        setModal({ date, key, participants: [], loading: false });
+      }
+    },
+    [user?.id],
+  );
 
   const rankedTemplate = useMemo(() => {
     const sorted = [...templateRows].sort((a, b) => {
@@ -610,24 +632,18 @@ export function GlobalActionCompletionSection() {
         </p>
         <SdgTagStrip ids={sdgIds} />
         {open ? (
-          <div className="border-t border-[var(--color-muted)]/40 px-2 pb-3 pt-2">
+          <div className="border-t border-[var(--color-muted)]/40 overflow-x-auto overflow-y-visible overscroll-x-contain px-2 pb-3 pt-2">
             <p className="mb-1 text-[10px] leading-snug text-[var(--color-subtle)]">
-              與卡片上方所選「{pl}」區間一致；色越深表示該日完成人次越高。
-              {rowKey.kind === "custom"
-                ? " 自訂行動：右下角相機表示該日至少一筆打卡含佐證圖。"
-                : null}
+              與上方所選「{pl}」區間一致；有打卡為綠底，無打卡為白底。
             </p>
             {densityLoading ? (
               <Skeleton className="h-32 w-full rounded-lg" />
             ) : (
-              <ActionDensityHeatmap
+              <ProfileBinaryDensityHeatmap
                 layout={layout}
                 byDate={densityMap}
                 todayStr={todayStr}
                 onCellClick={(d) => void openCell(d, rowKey)}
-                photoMarkDates={
-                  rowKey.kind === "custom" ? photoMarkDates : undefined
-                }
               />
             )}
           </div>
@@ -645,26 +661,79 @@ export function GlobalActionCompletionSection() {
       ? Math.max(...rankedCustom.map(customRatePct), 1)
       : 1;
 
-  if (loadingList) {
-    return <Skeleton className="h-48 w-full rounded-2xl" />;
-  }
-  if (listError) {
-    return (
-      <p className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
-        行動完成率載入失敗：{listError}（請套用 migration
-        `20260322123000_leaderboard_action_density_rpcs.sql`、
-        `20260322141000_custom_title_stats_list_days.sql`、
-        `20260322142000_custom_title_stats_include_list_only.sql`、
-        `20260322150000_action_completion_sdg_ids.sql`）
-      </p>
-    );
-  }
+  const weeklyRowsWithCheckin = useMemo(
+    () => weeklyRows.filter((r) => r.completed_count > 0),
+    [weeklyRows],
+  );
+
+  const dayNavDates = useMemo(
+    () => eachDateStringInRange(chartStart, chartEnd),
+    [chartStart, chartEnd],
+  );
+
+  const closeDayDialog = useCallback(() => {
+    setDayDialog(null);
+    void refetchWeekly();
+  }, [refetchWeekly]);
+
+  const dayNavIdx =
+    dayDialog != null ? dayNavDates.indexOf(dayDialog.date) : -1;
+  const canDayPrev = dayNavIdx > 0;
+  const canDayNext = dayNavIdx >= 0 && dayNavIdx < dayNavDates.length - 1;
 
   return (
     <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+      <div className="mb-3 flex w-full flex-wrap items-center justify-center gap-2">
+        <div
+          className="inline-flex rounded-full border border-[var(--color-muted)]/60 bg-[var(--color-white)]/80 p-0.5 shadow-sm"
+          role="tablist"
+          aria-label="紀錄分頁"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mainTab === "completion"}
+            onClick={() => setMainTab("completion")}
+            className={[
+              "rounded-full px-3 py-1.5 text-xs font-medium transition",
+              mainTab === "completion"
+                ? "bg-[var(--color-primary-strong)] text-[var(--color-white)] shadow-sm"
+                : "text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)]/50",
+            ].join(" ")}
+          >
+            各項完成率
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mainTab === "weekly"}
+            onClick={() => setMainTab("weekly")}
+            className={[
+              "rounded-full px-3 py-1.5 text-xs font-medium transition",
+              mainTab === "weekly"
+                ? "bg-[var(--color-primary-strong)] text-[var(--color-white)] shadow-sm"
+                : "text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)]/50",
+            ].join(" ")}
+          >
+            每週紀錄
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setAddDatePick(chartEnd <= todayStr ? chartEnd : todayStr);
+            setAddDateOpen(true);
+          }}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-muted)]/70 bg-[var(--color-white)] px-3 text-xs font-medium text-[var(--color-primary-dark)] shadow-sm transition hover:bg-[var(--color-primary-light)]/40"
+        >
+          <Plus className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+          填寫紀錄
+        </button>
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-          各項完成率（點開看密度圖）
+          {mainTab === "completion" ? "各項完成率（點開看密度圖）" : "每週紀錄"}
         </h3>
         <div
           ref={periodBarRef}
@@ -674,7 +743,7 @@ export function GlobalActionCompletionSection() {
             <div
               className="grid w-full max-w-none grid-cols-4 gap-1 rounded-full border border-[var(--color-muted)]/60 bg-[var(--color-white)]/70 p-1 shadow-sm sm:w-[17.5rem]"
               role="group"
-              aria-label="各項完成率統計區間"
+              aria-label="紀錄統計區間"
             >
               {ACTION_COMPLETION_PERIODS.map((p) => (
                 <button
@@ -767,53 +836,382 @@ export function GlobalActionCompletionSection() {
           ) : null}
         </div>
       </div>
-      <p className="mt-2 text-xs text-[var(--color-subtle)]">
-        （{chartStart === chartEnd ? chartStart : `${chartStart}～${chartEnd}`}
-        ）。公版：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）×
-        100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（依標題彙總）× 100%。
-      </p>
-      <div className="mt-3 space-y-2">
-        <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-          公版項目
-        </p>
-        {rankedTemplate.length === 0 ? (
-          <p className="text-sm text-[var(--color-subtle)]">
-            尚無公版項目資料。
-          </p>
-        ) : (
-          rankedTemplate.map((r, i) =>
-            renderRow(
-              i + 1,
-              r.title,
-              templateRatePct(r),
-              `${r.checkinCount} 次打卡 · ${r.achieverCount} 人曾完成`,
-              `分母＝${r.periodDays} 天 × ${r.activeUsers} 人（期間內曾打卡者）`,
-              { kind: "template", itemId: r.itemId },
-              maxTemplateRate,
-              r.sdgIds ?? [],
-            ),
-          )
-        )}
-      </div>
-      {rankedCustom.length > 0 ? (
-        <div className="mt-4 space-y-2">
-          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-            自訂行動（依標題彙總）
-          </p>
-          {rankedCustom.map((r, i) =>
-            renderRow(
-              rankedTemplate.length + i + 1,
-              r.title,
-              customRatePct(r),
-              `${r.checkinCount} 次打卡 · ${r.achieverCount} 人曾完成`,
-              r.legacyListDenominator
-                ? `分母估算＝${r.onListDays}（區間天數×曾打卡人數；資料庫請套用 migration \`20260322141000_custom_title_stats_list_days.sql\` 改為「列入今日清單」人日）。完成 ${r.checkinCount} 次。`
-                : `分母＝列入今日清單 ${r.onListDays} 人日；完成 ${r.checkinCount} 次。`,
-              { kind: "custom", title: r.title },
-              maxCustomRate,
-              r.sdgIds ?? [],
-            ),
+      {mainTab === "completion" ? (
+        <>
+          {loadingList ? (
+            <Skeleton className="mt-3 h-48 w-full rounded-xl" />
+          ) : listError ? (
+            <p className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
+              行動完成率載入失敗：{listError}（請套用 migration
+              `20260322200000_profile_action_completion_rpcs.sql` 及全體榜相關
+              RPC）
+            </p>
+          ) : (
+            <>
+              <p className="mt-2 text-xs text-[var(--color-subtle)]">
+                （
+                {chartStart === chartEnd
+                  ? chartStart
+                  : `${chartStart}～${chartEnd}`}
+                ）。公版：完成率＝本人打卡次數 ÷ 區間天數 ×
+                100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（本人）×
+                100%。
+              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                  公版項目
+                </p>
+                {rankedTemplate.length === 0 ? (
+                  <p className="text-sm text-[var(--color-subtle)]">
+                    尚無公版項目資料。
+                  </p>
+                ) : (
+                  rankedTemplate.map((r, i) =>
+                    renderRow(
+                      i + 1,
+                      r.title,
+                      templateRatePct(r),
+                      `${r.checkinCount} 次打卡（本人）`,
+                      `分母＝區間 ${r.periodDays} 天`,
+                      { kind: "template", itemId: r.itemId },
+                      maxTemplateRate,
+                      r.sdgIds ?? [],
+                    ),
+                  )
+                )}
+              </div>
+              {rankedCustom.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                    自訂行動（依標題彙總）
+                  </p>
+                  {rankedCustom.map((r, i) =>
+                    renderRow(
+                      rankedTemplate.length + i + 1,
+                      r.title,
+                      customRatePct(r),
+                      `${r.checkinCount} 次打卡（本人）`,
+                      r.legacyListDenominator
+                        ? `分母估算＝${r.onListDays}（請套用 migration 20260322141000）。`
+                        : `分母＝列入今日清單 ${r.onListDays} 人日（本人）。`,
+                      { kind: "custom", title: r.title },
+                      maxCustomRate,
+                      r.sdgIds ?? [],
+                    ),
+                  )}
+                </div>
+              ) : null}
+            </>
           )}
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-xs text-[var(--color-subtle)]">
+            區間與上方相同：「{pl}」（
+            {chartStart === chartEnd
+              ? chartStart
+              : `${chartStart}～${chartEnd}`}
+            ）。僅列有打卡紀錄之日；檢視為唯讀（無自訂／收藏區），編輯同「今日」版面。
+          </p>
+          {weeklyLoading ? (
+            <Skeleton className="mt-3 h-48 w-full rounded-xl" />
+          ) : weeklyError ? (
+            <p className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
+              無法載入每週紀錄：{weeklyError}
+            </p>
+          ) : weeklyRowsWithCheckin.length === 0 ? (
+            <p className="mt-3 text-sm text-[var(--color-ink-secondary)]">
+              此區間尚無打卡紀錄。可點上方「填寫紀錄」選擇日期並新增。
+            </p>
+          ) : (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[640px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b-[0.5px] border-[var(--color-muted)] text-left text-[var(--color-ink-secondary)]">
+                    <th className="py-2 pr-2 font-medium">日期</th>
+                    <th className="py-2 pr-2 font-medium">進度</th>
+                    <th className="py-2 pr-2 font-medium">自訂</th>
+                    <th className="py-2 pr-2 font-medium">得分</th>
+                    <th className="py-2 pr-2 font-medium">連續</th>
+                    <th className="py-2 pr-2 font-medium text-center">照片</th>
+                    <th className="py-2 font-medium text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyRowsWithCheckin.map((r) => {
+                    const ex = weeklyExtras.get(r.date);
+                    const customTotal = ex?.customTotal ?? 0;
+                    const customDone = Math.min(
+                      ex?.customDone ?? 0,
+                      customTotal || Infinity,
+                    );
+                    const full =
+                      r.total_items > 0 && r.completed_count >= r.total_items;
+                    return (
+                      <tr
+                        key={r.date}
+                        role="button"
+                        tabIndex={0}
+                        className="cursor-pointer border-b-[0.5px] border-[var(--color-muted)]/60 transition hover:bg-[var(--color-primary-light)]/20"
+                        onClick={() =>
+                          setDayDialog({ date: r.date, mode: "view" })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setDayDialog({ date: r.date, mode: "view" });
+                          }
+                        }}
+                      >
+                        <td className="py-2 pr-2 tabular-nums font-medium text-[var(--color-ink)]">
+                          {r.date}
+                        </td>
+                        <td className="py-2 pr-2 tabular-nums text-[var(--color-ink)]">
+                          {r.completed_count}/{r.total_items}
+                        </td>
+                        <td className="py-2 pr-2 tabular-nums text-[var(--color-ink)]">
+                          {customTotal > 0
+                            ? `${customDone}/${customTotal}`
+                            : "—"}
+                        </td>
+                        <td className="py-2 pr-2">
+                          <span className="inline-flex items-center gap-1 tabular-nums text-[var(--color-ink)]">
+                            {r.raw_score}
+                            {full ? (
+                              <span title="當日清單全完成">
+                                <Leaf
+                                  className="h-4 w-4 shrink-0 text-emerald-600"
+                                  strokeWidth={2}
+                                  aria-hidden
+                                />
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-2 tabular-nums text-[var(--color-ink)]">
+                          {r.streak} 天
+                        </td>
+                        <td className="py-2 pr-2 text-center">
+                          {ex?.hasPhoto ? (
+                            <Camera
+                              className="mx-auto h-4 w-4 text-[var(--color-ink-secondary)]"
+                              strokeWidth={2}
+                              aria-label="有佐證照片"
+                            />
+                          ) : (
+                            <span className="text-[var(--color-subtle)]">
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="py-2 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              className="rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30"
+                              aria-label="檢視"
+                              onClick={() =>
+                                setDayDialog({ date: r.date, mode: "view" })
+                              }
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30"
+                              aria-label="編輯"
+                              onClick={() =>
+                                setDayDialog({ date: r.date, mode: "edit" })
+                              }
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-full p-2 text-amber-800 hover:bg-amber-100/80"
+                              aria-label="刪除當日紀錄"
+                              onClick={() => setDeleteDate(r.date)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      <ConfirmDialog
+        open={deleteDate !== null}
+        title="刪除此日所有紀錄？"
+        description="將移除該日所有打卡與「今日」自訂連結，統計會重算。不會刪除常用收藏裡的自訂項目本體。"
+        confirmLabel="刪除"
+        danger
+        busy={deleteBusy}
+        onCancel={() => setDeleteDate(null)}
+        onConfirm={() => {
+          if (!user?.id || !deleteDate) return;
+          setDeleteBusy(true);
+          void clearUserCalendarDay({ userId: user.id, date: deleteDate })
+            .then(() => {
+              setDeleteDate(null);
+              void refetchWeekly();
+            })
+            .catch(() => {})
+            .finally(() => setDeleteBusy(false));
+        }}
+      />
+
+      {addDateOpen ? (
+        <div
+          className="fixed inset-0 z-[910] flex items-end justify-center bg-[rgba(45,52,40,0.22)] p-3 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="填寫紀錄：選擇日期"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--color-surface)] p-4 shadow-xl">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                填寫紀錄
+              </p>
+              <button
+                type="button"
+                onClick={() => setAddDateOpen(false)}
+                className="rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30"
+                aria-label="關閉"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <label className="mt-3 block text-xs text-[var(--color-ink-secondary)]">
+              日期
+              <input
+                type="date"
+                max={todayStr}
+                min="2020-01-01"
+                value={addDatePick}
+                onChange={(e) => setAddDatePick(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    void e.currentTarget.showPicker?.();
+                  } catch {
+                    /* 已開啟或不允許時略過 */
+                  }
+                }}
+                className="mt-1 w-full cursor-pointer rounded-lg border border-[var(--color-muted)] bg-[var(--color-white)] px-2 py-2 text-[var(--color-ink)]"
+              />
+            </label>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAddDateOpen(false)}
+                className="rounded-full border border-[var(--color-muted)] px-4 py-2 text-sm"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={!addDatePick || addDatePick > todayStr}
+                onClick={() => {
+                  if (!addDatePick || addDatePick > todayStr) return;
+                  setAddDateOpen(false);
+                  setDayDialog({ date: addDatePick, mode: "edit" });
+                }}
+                className="rounded-full bg-[var(--color-primary-strong)] px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+              >
+                去填寫
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {dayDialog ? (
+        <div
+          className="fixed inset-0 z-[920] flex items-end justify-center bg-[rgba(45,52,40,0.22)] p-2 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            dayDialog.mode === "view" ? "檢視該日清單" : "編輯該日清單"
+          }
+        >
+          <div className="flex max-h-[min(92vh,56rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-[var(--color-bg)] shadow-2xl sm:max-w-xl">
+            <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-muted)]/60 bg-[var(--color-surface)] px-2 py-2.5">
+              <button
+                type="button"
+                disabled={!canDayPrev}
+                onClick={() => {
+                  setDayDialog((prev) => {
+                    if (!prev) return prev;
+                    const i = dayNavDates.indexOf(prev.date);
+                    const d = dayNavDates[i - 1];
+                    return d ? { ...prev, date: d } : prev;
+                  });
+                }}
+                className="shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30 disabled:pointer-events-none disabled:opacity-30"
+                aria-label="前一天"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <p className="min-w-0 flex-1 text-center text-sm font-semibold text-[var(--color-ink)]">
+                {dayDialog.date}
+                <span className="block text-xs font-normal text-[var(--color-ink-secondary)]">
+                  {dayDialog.mode === "view" ? "檢視" : "編輯"}
+                </span>
+              </p>
+              <button
+                type="button"
+                disabled={!canDayNext}
+                onClick={() => {
+                  setDayDialog((prev) => {
+                    if (!prev) return prev;
+                    const i = dayNavDates.indexOf(prev.date);
+                    const d = dayNavDates[i + 1];
+                    return d ? { ...prev, date: d } : prev;
+                  });
+                }}
+                className="shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30 disabled:pointer-events-none disabled:opacity-30"
+                aria-label="後一天"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={closeDayDialog}
+                className="shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30"
+                aria-label="關閉"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
+              <TodayChecklist
+                key={dayDialog.date}
+                selectedDate={dayDialog.date}
+                variant={dayDialog.mode === "view" ? "readonly" : "interactive"}
+              />
+            </div>
+            {dayDialog.mode === "edit" ? (
+              <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--color-muted)]/50 bg-[var(--color-surface)] px-3 py-3">
+                <button
+                  type="button"
+                  onClick={closeDayDialog}
+                  className="rounded-full bg-[#849B6D] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
+                >
+                  儲存並關閉
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -831,7 +1229,7 @@ export function GlobalActionCompletionSection() {
           >
             <div className="flex items-center justify-between border-b border-[var(--color-muted)]/60 px-4 py-3">
               <p className="text-sm font-semibold text-[var(--color-ink)]">
-                {modal.date} 完成者
+                {modal.date} 我的完成紀錄
               </p>
               <button
                 type="button"

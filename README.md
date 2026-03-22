@@ -10,9 +10,9 @@ GoGreen 是以聯合國 17 個 SDG 為核心的每日行動檢核 web app：完�
 
 | 功能 | 說明 |
 | --- | --- |
-| 今日檢核 | 公版清單勾選、自訂行動（含 SDG、收藏）、連續天數與每日統計 |
+| 今日檢核 | 公版清單勾選、自訂行動（含 SDG、收藏）、連續天數與每日統計；可 **`/today?date=yyyy-MM-dd`** 檢視／編輯歷史日 |
 | Google 登入 | Supabase Auth OAuth，登入後同步 `users`；首次進入 App 可確認暱稱（`onboarding_completed`） |
-| 個人資料 | 暱稱；本週／本月／至今數據與圖表（與排行榜期間對齊） |
+| 個人資料 | 暱稱；本週／本月／至今 **五卡**、**分數表／SDG**、**各項完成率／每週紀錄**（獨立區間）、**填寫紀錄**（補登他日）；與排行榜頂部期間對齊者僅五卡＋圖表區 |
 | 群組 | 建立公開／私人（邀請碼）、加入公開群組、邀請碼加入私人、退出 |
 | 全體排行榜 | 本週／本月／至今 × 四維度（總加權／分數／Streak Tier 加成／SDG 覆蓋），Realtime 訂閱 `user_daily_stats` |
 | PWA | `next-pwa` + `manifest.json`（正式建置使用 `npm run build --webpack`） |
@@ -59,7 +59,7 @@ cp .env.example .env.local
 
 排行榜統計／個人與群組圖表與 SDG 覆蓋排名另需執行（順序不拘，皆 idempotent）：
 
-`20260321220000_leaderboard_analytics_rpc.sql`、`20260321230100_group_sdg_distribution_rpc.sql`、`20260321231000_leaderboard_user_sdg_goals_rpc.sql`、`20260321232000_leaderboard_user_checkin_split_rpc.sql`、`20260322120000_leaderboard_group_members_rpc.sql`（函式說明見 [INSTRUCTIONS.md](./INSTRUCTIONS.md)「排行榜／分析用 RPC」）。
+`20260321220000_leaderboard_analytics_rpc.sql`、`20260321230100_group_sdg_distribution_rpc.sql`、`20260321231000_leaderboard_user_sdg_goals_rpc.sql`、`20260321232000_leaderboard_user_checkin_split_rpc.sql`、`20260322120000_leaderboard_group_members_rpc.sql`、**`20260322123000_leaderboard_action_density_rpcs.sql`**（全體榜各項完成率密度）、**`20260322200000_profile_action_completion_rpcs.sql`**（個人頁「各項完成率」專用 RPC，僅 `authenticated`）等（函式與順序見 [INSTRUCTIONS.md](./INSTRUCTIONS.md)「排行榜／分析用 RPC」）。
 
 完成後於 **Database → Replication**（或 SQL）將 `daily_checkins`、`user_daily_stats` 納入 Realtime publication（語句見 INSTRUCTIONS.md「Realtime 規範」）。
 

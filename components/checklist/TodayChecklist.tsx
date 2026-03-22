@@ -10,8 +10,16 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { getStreakTierBonus } from "@/constants/scoring";
 import { useTodayChecklist } from "@/hooks/useTodayChecklist";
-import { Flame, Leaf, MoreHorizontal } from "lucide-react";
+import { getTodayString } from "@/lib/utils/date";
+import { Flame, Leaf } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
+type TodayChecklistProps = {
+  /** 預設為今日；可為歷史日（UTC+8 `yyyy-MM-dd`） */
+  selectedDate?: string;
+  /** `readonly`：檢視用，隱藏自訂／收藏區且不可勾選 */
+  variant?: "interactive" | "readonly";
+};
 
 function BouncyNumber({ value }: { value: number }) {
   const prev = useRef(value);
@@ -62,7 +70,12 @@ function spawnDomConfetti() {
   }
 }
 
-export function TodayChecklist() {
+export function TodayChecklist({
+  selectedDate: selectedDateProp,
+  variant = "interactive",
+}: TodayChecklistProps = {}) {
+  const selectedDate = selectedDateProp ?? getTodayString();
+  const readonly = variant === "readonly";
   const {
     items,
     customItems,
@@ -93,7 +106,7 @@ export function TodayChecklist() {
     date,
     pendingToggles,
     fullCompletionCelebrationTick,
-  } = useTodayChecklist();
+  } = useTodayChecklist(selectedDate);
 
   const [showCelebrateOverlay, setShowCelebrateOverlay] = useState(false);
   const halfToastShown = useRef(false);
@@ -272,18 +285,9 @@ export function TodayChecklist() {
       ) : null}
 
       <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-[11px] leading-snug text-[var(--color-ink-secondary)]">
-            日期 (UTC+8) {date}
-          </p>
-          <button
-            type="button"
-            className="-m-2 shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-ink)]"
-            aria-label="更多"
-          >
-            <MoreHorizontal className="h-5 w-5" aria-hidden />
-          </button>
-        </div>
+        <p className="text-[11px] leading-snug text-[var(--color-ink-secondary)]">
+          日期 (UTC+8) {date}
+        </p>
         {stats ? (
           <>
             <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
@@ -365,11 +369,14 @@ export function TodayChecklist() {
               <ChecklistRow
                 item={item}
                 done={checkinItemIds.has(item.id)}
-                disabled={pendingToggles.has(`p:${item.id}`)}
+                readOnly={readonly}
+                disabled={
+                  readonly || pendingToggles.has(`p:${item.id}`)
+                }
                 onToggle={() => void togglePublic(item.id)}
                 photoUrl={photoByItemId[item.id] ?? null}
                 onUploadPhoto={
-                  checkinItemIds.has(item.id)
+                  !readonly && checkinItemIds.has(item.id)
                     ? (file) =>
                         void uploadPhoto({ itemId: item.id, file })
                     : undefined
@@ -382,7 +389,10 @@ export function TodayChecklist() {
             <div key={item.id}>
               <ChecklistStampCard
                 done={checkinCustomIds.has(item.id)}
-                disabled={pendingToggles.has(`c:${item.id}`)}
+                readOnly={readonly}
+                disabled={
+                  readonly || pendingToggles.has(`c:${item.id}`)
+                }
                 onToggle={() => void toggleCustom(item.id)}
                 title={item.title}
                 metaLine={
@@ -393,15 +403,21 @@ export function TodayChecklist() {
                 sdgIds={item.sdg_ids ?? undefined}
                 photoUrl={photoByCustomId[item.id] ?? null}
                 onUploadPhoto={
-                  checkinCustomIds.has(item.id)
+                  !readonly && checkinCustomIds.has(item.id)
                     ? (file) =>
                         void uploadPhoto({ customItemId: item.id, file })
                     : undefined
                 }
                 photoUploadBusy={pendingPhotoUploads.has(`c:${item.id}`)}
-                onRequestRemoveFromToday={() => setUnlinkTarget(item.id)}
+                onRequestRemoveFromToday={
+                  readonly
+                    ? undefined
+                    : () => setUnlinkTarget(item.id)
+                }
                 removeFromTodayPending={pendingUnlinks.has(item.id)}
-                onRequestEdit={() => setEditItem(item)}
+                onRequestEdit={
+                  readonly ? undefined : () => setEditItem(item)
+                }
                 editPending={pendingUpdates.has(item.id)}
               />
             </div>
@@ -409,6 +425,7 @@ export function TodayChecklist() {
         </div>
       ) : null}
 
+      {!readonly ? (
       <section
         id="gg-custom-favorites-section"
         className="scroll-mt-6 overflow-hidden rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)]"
@@ -460,6 +477,7 @@ export function TodayChecklist() {
           </div>
         </div>
       </section>
+      ) : null}
     </div>
   );
 }

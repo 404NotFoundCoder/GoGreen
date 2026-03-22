@@ -1,4 +1,10 @@
-import { addMonths, endOfMonth, parseISO, startOfMonth } from "date-fns";
+import {
+  addMonths,
+  differenceInCalendarDays,
+  endOfMonth,
+  parseISO,
+  startOfMonth,
+} from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { createClient } from "@/lib/supabase/client";
 import { TIMEZONE } from "@/constants/config";
@@ -555,7 +561,7 @@ export async function fetchMySdgDistribution(
   }));
 }
 
-/** 個人資料圖：分數表折線（`dailyScores`）、完成筆數系列（`dailyCompletions`）、SDG 分布；期間與所選「本週／本月／至今」一致。「至今」為 **今年 1/1～今日**（與打卡密度 GitHub 圖一致）。 */
+/** 個人資料圖：分數表折線（`dailyScores`）、完成筆數系列（`dailyCompletions`）、SDG 分布；期間與所選「本週／本月／至今」一致。「至今」為 **今年 1/1～今日**。 */
 export async function fetchUserProfileCharts(
   period: LeaderboardPeriod,
   userId: string,
@@ -567,6 +573,13 @@ export async function fetchUserProfileCharts(
   chartStart: string;
   chartEnd: string;
   heatmapRows: DailyStatRow[];
+  summaryTop: {
+    totalScore: number;
+    checkInDays: number;
+    longestStreak: number;
+    sdgDistinctCount: number;
+    maxSingleDaySdgCoverage: number;
+  };
 }> {
   const { start: defaultStart, end } = getLeaderboardDateBounds(period);
   const fetchStart = period === "all" ? getYearStartString() : defaultStart;
@@ -623,6 +636,38 @@ export async function fetchUserProfileCharts(
 
   const sdgDistribution = await fetchMySdgDistribution(chartStart, chartEnd);
 
+  const inChart = rows.filter(
+    (r) => r.date >= chartStart && r.date <= chartEnd,
+  );
+  const sdgDistinctCount = sdgDistribution.filter((r) => r.count > 0).length;
+  let maxSingleDaySdgCoverage = 0;
+  for (const r of inChart) {
+    const v = typeof r.sdg_coverage === "number" ? r.sdg_coverage : 0;
+    if (v > maxSingleDaySdgCoverage) maxSingleDaySdgCoverage = v;
+  }
+  const totalScore = inChart.reduce((s, r) => s + r.raw_score, 0);
+  const checkInDays = inChart.filter((r) => r.completed_count > 0).length;
+  const longestStreak = (() => {
+    const active = inChart
+      .filter((r) => r.completed_count > 0)
+      .map((r) => r.date)
+      .sort();
+    if (active.length === 0) return 0;
+    let best = 1;
+    let run = 1;
+    for (let i = 1; i < active.length; i++) {
+      const a = parseISO(`${active[i - 1]}T12:00:00`);
+      const b = parseISO(`${active[i]}T12:00:00`);
+      if (differenceInCalendarDays(b, a) === 1) {
+        run += 1;
+        best = Math.max(best, run);
+      } else {
+        run = 1;
+      }
+    }
+    return best;
+  })();
+
   return {
     dailyCompletions,
     dailyScores,
@@ -630,7 +675,13 @@ export async function fetchUserProfileCharts(
     sdgDistribution,
     chartStart,
     chartEnd,
-    /** 供熱力圖：期間內有打卡之日的原始列 */
-    heatmapRows: rows.filter((r) => r.date >= chartStart && r.date <= chartEnd),
+    heatmapRows: inChart,
+    summaryTop: {
+      totalScore,
+      checkInDays,
+      longestStreak,
+      sdgDistinctCount,
+      maxSingleDaySdgCoverage,
+    },
   };
 }

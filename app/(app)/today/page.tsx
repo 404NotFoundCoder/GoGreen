@@ -1,5 +1,10 @@
-import { TodayChecklist } from "@/components/checklist/TodayChecklist";
+import { Suspense } from "react";
+import { TodayPageClient } from "./TodayPageClient";
 
 export default function TodayPage() {
-  return <TodayChecklist />;
+  return (
+    <Suspense fallback={null}>
+      <TodayPageClient />
+    </Suspense>
+  );
 }

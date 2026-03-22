@@ -46,9 +46,14 @@ export type TodayStats = {
   sdg_coverage: number;
 } | null;
 
-export function useTodayChecklist() {
+function clampDateToToday(d: string): string {
+  const t = getTodayString();
+  return d > t ? t : d;
+}
+
+export function useTodayChecklist(selectedDate: string) {
   const { user, loading: authLoading } = useAuthContext();
-  const date = getTodayString();
+  const date = clampDateToToday(selectedDate);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [items, setItems] = useState<ChecklistItemRow[]>([]);
   const [customItems, setCustomItems] = useState<CustomItemRow[]>([]);

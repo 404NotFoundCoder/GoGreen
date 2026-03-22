@@ -88,6 +88,8 @@ type Props = {
   /** 自訂項目：編輯標題／SDG（同一筆 custom_items） */
   onRequestEdit?: () => void;
   editPending?: boolean;
+  /** 僅檢視：不可打卡、不套用 disabled 灰階，佐證仍可放大檢視 */
+  readOnly?: boolean;
 };
 
 export function ChecklistStampCard({
@@ -106,6 +108,7 @@ export function ChecklistStampCard({
   removeFromTodayPending,
   onRequestEdit,
   editPending,
+  readOnly = false,
 }: Props) {
   const cardRef = useRef<HTMLButtonElement>(null);
   const stampZoneRef = useRef<HTMLSpanElement>(null);
@@ -133,7 +136,7 @@ export function ChecklistStampCard({
   }, [visualDone]);
 
   const handleClick = () => {
-    if (disabled || stamping) return;
+    if (readOnly || disabled || stamping) return;
     if (done) {
       triggerSpring(cardRef.current);
       onToggle();
@@ -156,7 +159,7 @@ export function ChecklistStampCard({
     <button
       ref={cardRef}
       type="button"
-      disabled={disabled || stamping}
+      disabled={readOnly ? false : disabled || stamping}
       onClick={handleClick}
       className={[
         "gg-checklist-row group relative flex min-h-[44px] min-w-0 flex-1 flex-col gap-2 overflow-visible rounded-[14px] px-4 py-[0.85rem] text-left transition-[background-color,border-color] duration-200",
@@ -164,7 +167,8 @@ export function ChecklistStampCard({
         stamping ? "stamping" : "",
         strikeReady && visualDone ? "strike-ready" : "",
         userStamped ? "user-stamped" : "",
-        disabled ? "opacity-60" : "",
+        readOnly ? "cursor-default" : "",
+        !readOnly && disabled ? "opacity-60" : "",
       ].join(" ")}
     >
       <div className="flex items-center gap-3">

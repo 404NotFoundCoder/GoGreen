@@ -347,9 +347,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - **排名邏輯**：群組間以成員期間表現聚合——**平均分數**、**平均 Streak Tier 加成**、**SDG 覆蓋（成員 N+M 於群內平均）**、**總加權**（三維度線性積分，與全體同構）。實作於 **`lib/supabase/leaderboard.fetchGroupsLeaderboard`**
 - **前端**：`LeaderboardShell`「各群間」、四子 tab（平均分數／平均 Streak Tier 加成／…）`[done]`
-- 統計面板：參與群組數、平均分數領先、SDG 覆蓋最高群組 `[done]`
-- 群組列表：公開/私人 badge、成員數、指標條 `[done]`
-- 圖表：各群組平均分數、SDG 覆蓋橫條比較（前 8）`[done]`
+- 統計面板：**四格**——參與群組數、平均原始分領先、SDG 覆蓋最高、平均 Streak Tier 加成最高；**皆與頁面頂部選定之本週／本月／至今一致**（`fetchGroupsLeaderboard(period)`：`user_daily_stats` 與 `rpc_leaderboard_user_sdg_goals` 皆依該 `period` 邊界）`[done]`
+- 群組列表：公開/私人 badge、成員數、指標條 `[done]`（**已移除**各群間「前 8」橫條小圖）
 
 ### 個人記錄 `[部分完成]`
 
@@ -1090,7 +1089,7 @@ Tailwind 預設斷點，統一使用，不自訂：
 | ----------- | -------------------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
 | 主導航      | 底部 tab bar                                                                     | 底部 tab bar     | 左側 sidebar                             |
 | 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]` |
-| 排行榜      | 全寬列表                                                                         | 全寬列表         | 全寬列表；統計卡＋圖表區為 **lg: 雙欄並排**（`LeaderboardShell`）`[done]` |
+| 排行榜      | 全寬列表                                                                         | 全寬列表         | **全體**：統計卡＋圖表區 **lg: 雙欄**；**各群間**：四格統計卡（xl 四欄）＋列表，無橫條圖 `[done]` |
 | 統計圖表    | 全寬                                                                             | 全寬             | 並排顯示（與上欄對齊）`[done]`             |
 
 ### 觸控規範（手機 / 平板）
@@ -1274,10 +1273,17 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ---
 
+### [2026-03-22] v0.10.37 — 各群間四卡、移除橫條圖、SDG 依期間標示
+
+- `[FEAT]` **各群間**統計列改 **四卡**（參與群組數、平均原始分、**依選定時間**之 SDG 覆蓋最高、平均 Streak Tier 加成最高）；卡標題／說明標註 **`periodScopeLabel`**
+- `[FEAT]` `fetchGroupsLeaderboard` 回傳 **`topAvgTier`**；移除 **`chartTopByScore`／`chartTopBySdg`**
+- `[FEAT]` 刪除各群間「各群組平均分／SDG 覆蓋（前 8）」UI；`LeaderboardViz` 移除 **`GroupsAvgScoreBars`**、**`GroupsSdgBars`**
+- `[DOCS]` 「群組 vs 群組」、UI Layout 表與本 Changelog
+
 ### [2026-03-22] v0.10.36 — 排行榜主列表分頁（每頁 20）
 
 - `[FEAT]` 全體／群組內／各群間主列表：`pageRankedUsers`／`pageRankedGroups`；`fetch*` 回傳 `page`／`pageSize`／`totalPages`；`LeaderboardShell` 分頁列與觸控友善按鈕
-- `[FEAT]` 各群間：統計卡與「前 8」長條圖改以全榜資料（`topAvgRaw`／`topSdg`／`chartTopByScore`／`chartTopBySdg`），與主列表目前頁無關
+- `[FEAT]` 各群間：統計卡 `topAvgRaw`／`topSdg` 與全榜一致（後續 v0.10.37 改四卡並移除橫條圖）
 - `[FEAT]` 群組內：`memberBarRows`（完成項次前 12）供小圖，與主列表分頁無關
 - `[DOCS]` `LEADERBOARD_LIMIT` 語意、排行榜設計一句與本 Changelog
 

@@ -8,8 +8,6 @@ import { RankMark } from "@/components/leaderboard/RankMark";
 import {
   GlobalDailyCompletionBars,
   GroupMemberCountBars,
-  GroupsAvgScoreBars,
-  GroupsSdgBars,
   HotActionsList,
   SdgDistributionBars,
 } from "@/components/leaderboard/LeaderboardViz";
@@ -505,6 +503,11 @@ function PersonalLeaderboardBody({
                   ? `第 ${p.groupRanks.weighted} 名`
                   : "未上榜"}
               </p>
+              {p.groupMemberCount != null && p.groupMemberCount > 0 ? (
+                <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                  群組共 {p.groupMemberCount} 人
+                </p>
+              ) : null}
             </>
           ) : (
             <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">
@@ -1099,13 +1102,16 @@ export function LeaderboardShell() {
       {/* 各群間 */}
       {scope === "groups" ? (
         <section className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
               <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
                 參與排行群組數
               </p>
               <p className="mt-1 text-3xl font-bold tabular-nums text-[var(--color-primary-dark)]">
                 {groupsLb.loading ? "—" : groupsLb.data?.totalGroups ?? 0}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                與上方「{periodScopeLabel(period)}」一致
               </p>
             </div>
             <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
@@ -1123,44 +1129,33 @@ export function LeaderboardShell() {
             </div>
             <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
               <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-                SDG 覆蓋最高群組
+                「{periodScopeLabel(period)}」SDG 覆蓋最高群組
               </p>
               <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
                 {groupsLb.data?.topSdg?.name ?? "—"}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
                 {groupsLb.data?.topSdg
-                  ? `平均指標 ${groupsLb.data.topSdg.avg.toFixed(1)}`
+                  ? `成員平均 (N+M) ${groupsLb.data.topSdg.avg.toFixed(1)}`
+                  : "依該期間內成員打卡與每日涵蓋計算"}
+              </p>
+            </div>
+            <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
+              <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                「{periodScopeLabel(period)}」平均 Streak Tier 加成最高群組
+              </p>
+              <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
+                {groupsLb.data?.topAvgTier?.name ?? "—"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                {groupsLb.data?.topAvgTier
+                  ? `平均 ${groupsLb.data.topAvgTier.avg.toFixed(1)}（成員期間內 tier 加總÷人數）`
                   : ""}
               </p>
             </div>
           </div>
-          {!groupsLb.loading &&
-          groupsLb.data &&
-          groupsLb.data.totalGroups > 0 ? (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
-                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                  各群組平均分（前 8）
-                </h3>
-                <div className="mt-3">
-                  <GroupsAvgScoreBars
-                    rows={groupsLb.data.chartTopByScore ?? []}
-                  />
-                </div>
-              </div>
-              <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
-                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                  各群組 SDG 覆蓋（前 8）
-                </h3>
-                <div className="mt-3">
-                  <GroupsSdgBars rows={groupsLb.data.chartTopBySdg ?? []} />
-                </div>
-              </div>
-            </div>
-          ) : null}
           {groupsLb.loading ? (
-            <Skeleton className="h-40 w-full rounded-2xl" />
+            <Skeleton className="h-24 w-full rounded-2xl" />
           ) : null}
           {groupsLb.error ? (
             <p className="text-[var(--color-ink)]">{groupsLb.error.message}</p>

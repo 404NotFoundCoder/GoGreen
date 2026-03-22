@@ -3,7 +3,7 @@
 import { RankMark } from "@/components/leaderboard/RankMark";
 import { SDG_COLORS } from "@/constants/sdg";
 import type { DailyCompletionPoint } from "@/lib/supabase/leaderboardAnalytics";
-import type { GroupRankedRow, RankedRow } from "@/lib/utils/leaderboard";
+import type { RankedRow } from "@/lib/utils/leaderboard";
 
 const CHART_INNER_PX = 112;
 
@@ -143,35 +143,6 @@ export function HotActionsList({
   );
 }
 
-export function GroupsAvgScoreBars({ rows }: { rows: GroupRankedRow[] }) {
-  const list = rows.slice(0, 8);
-  const max = Math.max(1, ...list.map((r) => r.avgRawScorePerMember));
-  if (list.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      {list.map((r) => (
-        <div key={r.groupId} className="flex items-center gap-2 text-sm">
-          <div className="flex w-7 shrink-0 items-center justify-center">
-            <RankMark rank={r.rank} size="sm" />
-          </div>
-          <span className="min-w-0 flex-1 truncate text-[var(--color-ink)]">
-            {r.name}
-          </span>
-          <div className="hidden h-2 w-24 overflow-hidden rounded-full bg-[var(--color-white)] sm:block">
-            <div
-              className="h-full rounded-full bg-[var(--color-primary-strong)]"
-              style={{ width: `${(r.avgRawScorePerMember / max) * 100}%` }}
-            />
-          </div>
-          <span className="w-10 shrink-0 text-right tabular-nums text-[var(--color-ink-secondary)]">
-            {r.avgRawScorePerMember.toFixed(1)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function GroupMemberCountBars({ rows }: { rows: RankedRow[] }) {
   const list = rows.slice(0, 12);
   const max = Math.max(1, ...list.map((r) => r.totalCompleted));
@@ -194,35 +165,6 @@ export function GroupMemberCountBars({ rows }: { rows: RankedRow[] }) {
           </div>
           <span className="w-12 shrink-0 text-right tabular-nums text-[var(--color-ink-secondary)]">
             {r.totalCompleted} 項
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function GroupsSdgBars({ rows }: { rows: GroupRankedRow[] }) {
-  const list = rows.slice(0, 8);
-  const max = Math.max(1, ...list.map((r) => r.avgSdgRankPerMember));
-  if (list.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      {list.map((r) => (
-        <div key={r.groupId} className="flex items-center gap-2 text-sm">
-          <div className="flex w-7 shrink-0 items-center justify-center">
-            <RankMark rank={r.rank} size="sm" />
-          </div>
-          <span className="min-w-0 flex-1 truncate text-[var(--color-ink)]">
-            {r.name}
-          </span>
-          <div className="hidden h-2 w-24 overflow-hidden rounded-full bg-[var(--color-white)] sm:block">
-            <div
-              className="h-full rounded-full bg-sky-600/80"
-              style={{ width: `${(r.avgSdgRankPerMember / max) * 100}%` }}
-            />
-          </div>
-          <span className="w-10 shrink-0 text-right tabular-nums text-[var(--color-ink-secondary)]">
-            {r.avgSdgRankPerMember.toFixed(1)}
           </span>
         </div>
       ))}

@@ -78,6 +78,11 @@ export function ProfileLeaderboardSummary({
                       ? `第 ${data.groupRanks.weighted} 名`
                       : "未上榜"}
                   </p>
+                  {data.groupMemberCount != null && data.groupMemberCount > 0 ? (
+                    <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                      群組共 {data.groupMemberCount} 人
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">

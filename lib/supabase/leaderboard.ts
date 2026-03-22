@@ -45,14 +45,12 @@ export type GroupMemberLeaderboardResult = GlobalLeaderboardResult & {
 export type GroupsLeaderboardResult = {
   rows: GroupRankedRow[];
   totalGroups: number;
-  /** 全榜依「平均分數」之前 8，供長條圖（與主列表分頁無關） */
-  chartTopByScore: GroupRankedRow[];
-  /** 全榜依「平均 SDG 指標」之前 8 */
-  chartTopBySdg: GroupRankedRow[];
-  /** 全榜平均原始分最高群組（統計卡） */
+  /** 全榜平均原始分最高群組（統計卡；與上方選定 **期間** 一致） */
   topAvgRaw: { name: string; avg: number } | null;
-  /** 全榜平均 (N+M) 最高群組（統計卡） */
+  /** 全榜平均 (N+M) 最高群組（統計卡；期間內成員打卡／`rpc_leaderboard_user_sdg_goals`） */
   topSdg: { name: string; avg: number } | null;
+  /** 全榜平均 Streak Tier 加成最高群組（統計卡；期間內成員每日 tier 加總÷人數） */
+  topAvgTier: { name: string; avg: number } | null;
 } & LeaderboardListMeta;
 
 export type PersonalLeaderboardSnapshot = {
@@ -65,6 +63,8 @@ export type PersonalLeaderboardSnapshot = {
   /** 所屬群組於「各群間」榜之名次；未加入群組時為 null */
   groupsRanks: Record<LeaderboardDimension, number | null> | null;
   group: { id: string; name: string } | null;
+  /** 目前所屬群組成員人數；未加入群組時為 null */
+  groupMemberCount: number | null;
   /** 期間內累計原始分 */
   periodRawScoreSum: number;
   /** 期間內單日 streak 之最大 */
@@ -516,21 +516,18 @@ export async function fetchGroupsLeaderboard(
     pageSize,
   );
 
-  const chartTopByScore = rankAllGroups(
-    groupAggs,
-    "score",
-    weighted,
-  ).slice(0, 8);
-  const chartTopBySdg = rankAllGroups(groupAggs, "sdg", weighted).slice(0, 8);
-
   let topAvgRaw: { name: string; avg: number } | null = null;
   let topSdg: { name: string; avg: number } | null = null;
+  let topAvgTier: { name: string; avg: number } | null = null;
   for (const g of groupAggs) {
     if (!topAvgRaw || g.avgRawScorePerMember > topAvgRaw.avg) {
       topAvgRaw = { name: g.name, avg: g.avgRawScorePerMember };
     }
     if (!topSdg || g.avgSdgRankPerMember > topSdg.avg) {
       topSdg = { name: g.name, avg: g.avgSdgRankPerMember };
+    }
+    if (!topAvgTier || g.avgTierBonusPerMember > topAvgTier.avg) {
+      topAvgTier = { name: g.name, avg: g.avgTierBonusPerMember };
     }
   }
 
@@ -540,10 +537,9 @@ export async function fetchGroupsLeaderboard(
     page: p,
     pageSize,
     totalPages,
-    chartTopByScore,
-    chartTopBySdg,
     topAvgRaw,
     topSdg,
+    topAvgTier,
   };
 }
 
@@ -628,6 +624,7 @@ export async function fetchPersonalLeaderboardSnapshot(
       groupRanks: null,
       groupsRanks: null,
       group: null,
+      groupMemberCount: null,
       periodRawScoreSum,
       maxStreakInPeriod,
       totalGroups: 0,
@@ -637,6 +634,7 @@ export async function fetchPersonalLeaderboardSnapshot(
 
   const groupId = memRow.group_id as string;
   const memberIds = await fetchGroupMemberIds(groupId);
+  const groupMemberCount = memberIds.length;
   const idSet = new Set(memberIds);
   const groupList = mergeMembersWithAgg(
     memberIds,
@@ -685,6 +683,7 @@ export async function fetchPersonalLeaderboardSnapshot(
     group: gMeta
       ? { id: gMeta.id as string, name: gMeta.name as string }
       : { id: groupId, name: "群組" },
+    groupMemberCount,
     periodRawScoreSum,
     maxStreakInPeriod,
     totalGroups,

@@ -331,7 +331,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 ### 全體排行榜
 
 - 所有使用者公開姓名，無隱私選項
-- 顯示前 `LEADERBOARD_LIMIT` 名
+- 主列表每頁最多 `LEADERBOARD_LIMIT` 筆（**20**），超過則「上一頁／下一頁」分頁；**名次為全榜名次**（第 2 頁仍顯示第 21 名起）
 - **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；圖表與統計子區塊由 `LeaderboardViz` 等組合；Realtime `user_daily_stats`；統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
 - 統計面板：參與人數、完成項次加總、9+ SDG 覆蓋人數、熱門行動等皆標註所選期間 `[done]`
 - 圖表：完成項次柱狀（本週每日／本月四週／至今依資料跨度自動：未滿一週補齊曆週 7 日→8～31 天四週→32 天～一年按月→逾年按年）；SDG 行動分布（佔總次數 %）；熱門行動 Top 5；migration 見 `rpc_global_*`
@@ -518,7 +518,7 @@ export const STREAK_TIERS = [
 ] as const;
 
 // constants/config.ts
-export const LEADERBOARD_LIMIT = 20; // 排行榜顯示筆數上限
+export const LEADERBOARD_LIMIT = 20; // 排行榜主列表每頁筆數（可翻頁）
 export const MAX_CUSTOM_ITEMS = 10; // 每日可加入今日清單的自訂項目上限
 export const MAX_FAVORITE_ITEMS = 20; // 常用清單收藏上限（獨立於今日自訂上限）
 export const CUSTOM_ITEM_MAX_LENGTH = 40; // 自訂項目文字長度上限
@@ -732,7 +732,9 @@ group by g.id, g.name, g.is_public;
 
 ### 排行榜／分析用 RPC（SECURITY DEFINER）
 
-跨使用者讀取 `daily_checkins` 或做榜單專用聚合時，以 **RPC** 實作（`security definer`）。**新環境**除 `20260321000000_initial.sql` 外，請依專案需求執行下列檔案（見 `supabase/migrations/`）：
+跨使用者讀取 `daily_checkins` 或做榜單專用聚合時，以 **RPC** 實作（`security definer`）。**`group_members`** 的 **`gm_select`** 僅允許讀 **本人**列，客戶端若直接 `select` 無法取得同群其他成員，亦無法組出「各群間」完整成員表；**群組內榜、各群間榜、群組圖表**須改呼叫 **`rpc_group_member_user_ids`**／**`rpc_leaderboard_group_rows`**（見下表最後一列）。
+
+**新環境**除 `20260321000000_initial.sql` 外，請依專案需求執行下列檔案（見 `supabase/migrations/`）：
 
 | Migration 檔 | 函式（摘要） |
 | --- | --- |
@@ -740,6 +742,7 @@ group by g.id, g.name, g.is_public;
 | `20260321230100_group_sdg_distribution_rpc.sql` | `rpc_group_sdg_distribution`（群組成員期間內 SDG 次數） |
 | `20260321231000_leaderboard_user_sdg_goals_rpc.sql` | `rpc_leaderboard_user_sdg_goals`（每位使用者期間相異 SDG，供 SDG 覆蓋維度） |
 | `20260321232000_leaderboard_user_checkin_split_rpc.sql` | `rpc_leaderboard_user_checkin_split`（公版／自訂打卡次數拆項；`lib/supabase/leaderboard.ts` 使用） |
+| `20260322120000_leaderboard_group_members_rpc.sql` | `rpc_group_member_user_ids`（呼叫者須為該群成員，回傳該群**全部** `user_id`）；`rpc_leaderboard_group_rows`（已登入：全表 `group_members` 併 `groups` 名稱／公開旗標，供各群間榜與個人快照） |
 
 前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
 
@@ -1270,6 +1273,20 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-22] v0.10.36 — 排行榜主列表分頁（每頁 20）
+
+- `[FEAT]` 全體／群組內／各群間主列表：`pageRankedUsers`／`pageRankedGroups`；`fetch*` 回傳 `page`／`pageSize`／`totalPages`；`LeaderboardShell` 分頁列與觸控友善按鈕
+- `[FEAT]` 各群間：統計卡與「前 8」長條圖改以全榜資料（`topAvgRaw`／`topSdg`／`chartTopByScore`／`chartTopBySdg`），與主列表目前頁無關
+- `[FEAT]` 群組內：`memberBarRows`（完成項次前 12）供小圖，與主列表分頁無關
+- `[DOCS]` `LEADERBOARD_LIMIT` 語意、排行榜設計一句與本 Changelog
+
+### [2026-03-22] v0.10.35 — 群組榜在 RLS 下讀齊成員（RPC）
+
+- `[FIX]` `[DB]` **`gm_select` 僅本人列**導致群組內榜只算到自己、各群間榜 **`totalGroups` 等於 1**、私人群組無法從客戶端讀到群名成員表：新增 **`rpc_group_member_user_ids`**、**`rpc_leaderboard_group_rows`**（`20260322120000_leaderboard_group_members_rpc.sql`）
+- `[FIX]` `lib/supabase/leaderboard.ts`：`fetchGroupMemberIds` 改走 RPC；`fetchGroupsLeaderboard`／`fetchPersonalLeaderboardSnapshot` 改以 `rpc_leaderboard_group_rows` 組 `membersByGroup` 與群組 meta（不再依賴可被 RLS 截斷的 `group_members`／`groups` 全表 select）
+- `[FIX]` `lib/supabase/leaderboardAnalytics.ts`：群組圖表共用 **`fetchGroupMemberIds`**
+- `[DOCS]` 「排行榜／分析用 RPC」表與本 Changelog
 
 ### [2026-03-22] v0.10.34 — 未 commit 變更與文件對齊
 

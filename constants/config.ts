@@ -1,6 +1,7 @@
 /** App 層級設定（對應 INSTRUCTIONS.md） */
 
-export const LEADERBOARD_LIMIT = 20; // 排行榜顯示筆數上限
+/** 排行榜主列表每頁筆數（超過則分頁） */
+export const LEADERBOARD_LIMIT = 20;
 
 export const MAX_CUSTOM_ITEMS = 10; // 每日可加入今日清單的自訂項目上限
 

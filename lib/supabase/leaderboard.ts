@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { LEADERBOARD_LIMIT } from "@/constants/config";
 import {
   getMonthStartString,
   getTodayString,
@@ -14,26 +15,45 @@ import {
   type GroupRankedRow,
   type LeaderboardDimension,
   type LeaderboardPeriod,
+  pageRankedGroups,
+  pageRankedUsers,
   rankAllGroups,
   rankAllUsers,
   sdgRankSum,
-  sortByDimension,
-  sortGroupsByDimension,
   type RankedRow,
   type UserPeriodAgg,
 } from "@/lib/utils/leaderboard";
 import { getLeaderboardDateBounds } from "@/lib/utils/leaderboardPeriod";
 
+export type LeaderboardListMeta = {
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type GlobalLeaderboardResult = {
   rows: RankedRow[];
-  /** 該期間內曾出現在 user_daily_stats 的不重複使用者數（榜單僅顯示前 LEADERBOARD_LIMIT 名） */
+  /** 該期間內曾出現在 user_daily_stats 的不重複使用者數 */
   totalParticipants: number;
+} & LeaderboardListMeta;
+
+/** 群組內成員榜（含「完成項次」小圖用之列，與主列表分頁無關） */
+export type GroupMemberLeaderboardResult = GlobalLeaderboardResult & {
+  memberBarRows: RankedRow[];
 };
 
 export type GroupsLeaderboardResult = {
   rows: GroupRankedRow[];
   totalGroups: number;
-};
+  /** 全榜依「平均分數」之前 8，供長條圖（與主列表分頁無關） */
+  chartTopByScore: GroupRankedRow[];
+  /** 全榜依「平均 SDG 指標」之前 8 */
+  chartTopBySdg: GroupRankedRow[];
+  /** 全榜平均原始分最高群組（統計卡） */
+  topAvgRaw: { name: string; avg: number } | null;
+  /** 全榜平均 (N+M) 最高群組（統計卡） */
+  topSdg: { name: string; avg: number } | null;
+} & LeaderboardListMeta;
 
 export type PersonalLeaderboardSnapshot = {
   myAgg: UserPeriodAgg | null;
@@ -256,19 +276,61 @@ async function fetchNicknameMap(): Promise<Map<string, string>> {
   return new Map((users ?? []).map((u) => [u.id as string, u.nickname as string]));
 }
 
-async function fetchGroupMemberIds(groupId: string): Promise<string[]> {
+/**
+ * 群組內榜／統計用：需完整成員列表。直接查 `group_members` 在 RLS（僅本人列）下只會得到自己，
+ * 故改走 `rpc_group_member_user_ids`（SECURITY DEFINER；僅群成員可呼叫並取得該群全體 user_id）。
+ */
+export async function fetchGroupMemberIds(groupId: string): Promise<string[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("group_members")
-    .select("user_id")
-    .eq("group_id", groupId);
+  const { data, error } = await supabase.rpc("rpc_group_member_user_ids", {
+    p_group_id: groupId,
+  });
   if (error) throw error;
-  return (data ?? []).map((r) => r.user_id as string);
+  return (data ?? []).map((r: { user_id: string }) => r.user_id);
+}
+
+type LeaderboardGroupRow = {
+  group_id: string;
+  user_id: string;
+  group_name: string;
+  is_public: boolean;
+};
+
+/** 各群間榜：跨群組成員與群組名稱（RLS 下客戶端無法自 `group_members` 掃全表） */
+async function fetchLeaderboardGroupRows(): Promise<LeaderboardGroupRow[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("rpc_leaderboard_group_rows");
+  if (error) throw error;
+  return (data ?? []) as LeaderboardGroupRow[];
+}
+
+function buildMembersByGroupAndGroupRows(rows: LeaderboardGroupRow[]): {
+  membersByGroup: Map<string, string[]>;
+  groupsRows: { id: string; name: string; is_public: boolean }[];
+} {
+  const membersByGroup = new Map<string, string[]>();
+  const meta = new Map<string, { name: string; is_public: boolean }>();
+  for (const r of rows) {
+    const gid = r.group_id;
+    const uid = r.user_id;
+    if (!membersByGroup.has(gid)) membersByGroup.set(gid, []);
+    membersByGroup.get(gid)!.push(uid);
+    if (!meta.has(gid)) {
+      meta.set(gid, { name: r.group_name, is_public: r.is_public });
+    }
+  }
+  const groupsRows = [...meta.entries()].map(([id, m]) => ({
+    id,
+    name: m.name,
+    is_public: m.is_public,
+  }));
+  return { membersByGroup, groupsRows };
 }
 
 export async function fetchGlobalLeaderboard(
   period: LeaderboardPeriod,
   dimension: LeaderboardDimension,
+  page: number = 1,
 ): Promise<GlobalLeaderboardResult> {
   const [stats, nick, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
@@ -281,8 +343,21 @@ export async function fetchGlobalLeaderboard(
   applyCheckinSplit(list, splitMap);
   const weighted = computeWeightedRanks(list);
   const totalParticipants = list.length;
-  const rows = sortByDimension(list, dimension, weighted);
-  return { rows, totalParticipants };
+  const pageSize = LEADERBOARD_LIMIT;
+  const { rows, page: p, totalPages } = pageRankedUsers(
+    list,
+    dimension,
+    weighted,
+    page,
+    pageSize,
+  );
+  return {
+    rows,
+    totalParticipants,
+    page: p,
+    pageSize,
+    totalPages,
+  };
 }
 
 export type GroupPeriodStats = {
@@ -365,7 +440,8 @@ export async function fetchGroupMemberLeaderboard(
   groupId: string,
   period: LeaderboardPeriod,
   dimension: LeaderboardDimension,
-): Promise<GlobalLeaderboardResult> {
+  page: number = 1,
+): Promise<GroupMemberLeaderboardResult> {
   const [stats, nick, memberIds, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
     fetchNicknameMap(),
@@ -380,16 +456,34 @@ export async function fetchGroupMemberLeaderboard(
   applyCheckinSplit(list, splitMap);
   const weighted = computeWeightedRanks(list);
   const totalParticipants = memberIds.length;
-  const rows = sortByDimension(list, dimension, weighted);
-  return { rows, totalParticipants };
+  const pageSize = LEADERBOARD_LIMIT;
+  const { rows, page: p, totalPages } = pageRankedUsers(
+    list,
+    dimension,
+    weighted,
+    page,
+    pageSize,
+  );
+  const memberBarRows = [...list]
+    .sort((a, b) => b.totalCompleted - a.totalCompleted)
+    .slice(0, 12)
+    .map((u, i) => ({ ...u, rank: i + 1 })) as RankedRow[];
+  return {
+    rows,
+    totalParticipants,
+    page: p,
+    pageSize,
+    totalPages,
+    memberBarRows,
+  };
 }
 
 /** 群組 vs 群組：依成員期間表現聚合後，以平均標準化分等維度排名 */
 export async function fetchGroupsLeaderboard(
   period: LeaderboardPeriod,
   dimension: LeaderboardDimension,
+  page: number = 1,
 ): Promise<GroupsLeaderboardResult> {
-  const supabase = createClient();
   const [stats, nick, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
     fetchNicknameMap(),
@@ -401,36 +495,56 @@ export async function fetchGroupsLeaderboard(
   applyCheckinSplit(userList, splitMap);
   const userMap = new Map(userList.map((u) => [u.userId, u]));
 
-  const [{ data: gm, error: gmErr }, { data: groups, error: gErr }] =
-    await Promise.all([
-      supabase.from("group_members").select("group_id, user_id"),
-      supabase.from("groups").select("id, name, is_public"),
-    ]);
-  if (gmErr) throw gmErr;
-  if (gErr) throw gErr;
-
-  const membersByGroup = new Map<string, string[]>();
-  for (const row of gm ?? []) {
-    const gid = row.group_id as string;
-    const uid = row.user_id as string;
-    if (!membersByGroup.has(gid)) membersByGroup.set(gid, []);
-    membersByGroup.get(gid)!.push(uid);
-  }
+  const lbRows = await fetchLeaderboardGroupRows();
+  const { membersByGroup, groupsRows } =
+    buildMembersByGroupAndGroupRows(lbRows);
 
   const groupAggs = buildGroupPeriodAggsFromUserMap(
     userMap,
-    (groups ?? []).map((g) => ({
-      id: g.id as string,
-      name: g.name as string,
-      is_public: g.is_public as boolean,
-    })),
+    groupsRows,
     membersByGroup,
   );
 
   const weighted = computeWeightedRanksForGroups(groupAggs);
   const totalGroups = groupAggs.length;
-  const rows = sortGroupsByDimension(groupAggs, dimension, weighted);
-  return { rows, totalGroups };
+  const pageSize = LEADERBOARD_LIMIT;
+  const { rows, page: p, totalPages } = pageRankedGroups(
+    groupAggs,
+    dimension,
+    weighted,
+    page,
+    pageSize,
+  );
+
+  const chartTopByScore = rankAllGroups(
+    groupAggs,
+    "score",
+    weighted,
+  ).slice(0, 8);
+  const chartTopBySdg = rankAllGroups(groupAggs, "sdg", weighted).slice(0, 8);
+
+  let topAvgRaw: { name: string; avg: number } | null = null;
+  let topSdg: { name: string; avg: number } | null = null;
+  for (const g of groupAggs) {
+    if (!topAvgRaw || g.avgRawScorePerMember > topAvgRaw.avg) {
+      topAvgRaw = { name: g.name, avg: g.avgRawScorePerMember };
+    }
+    if (!topSdg || g.avgSdgRankPerMember > topSdg.avg) {
+      topSdg = { name: g.name, avg: g.avgSdgRankPerMember };
+    }
+  }
+
+  return {
+    rows,
+    totalGroups,
+    page: p,
+    pageSize,
+    totalPages,
+    chartTopByScore,
+    chartTopBySdg,
+    topAvgRaw,
+    topSdg,
+  };
 }
 
 const ALL_DIMS: LeaderboardDimension[] = [
@@ -545,24 +659,12 @@ export async function fetchPersonalLeaderboardSnapshot(
     groupRanks[d] = row ? row.rank : null;
   }
 
-  const [{ data: gmAll }, { data: groupsAll }] = await Promise.all([
-    supabase.from("group_members").select("group_id, user_id"),
-    supabase.from("groups").select("id, name, is_public"),
-  ]);
-  const membersByGroup = new Map<string, string[]>();
-  for (const row of gmAll ?? []) {
-    const gid = row.group_id as string;
-    const uid = row.user_id as string;
-    if (!membersByGroup.has(gid)) membersByGroup.set(gid, []);
-    membersByGroup.get(gid)!.push(uid);
-  }
+  const lbRows = await fetchLeaderboardGroupRows();
+  const { membersByGroup, groupsRows } =
+    buildMembersByGroupAndGroupRows(lbRows);
   const groupAggs = buildGroupPeriodAggsFromUserMap(
     userMap,
-    (groupsAll ?? []).map((g) => ({
-      id: g.id as string,
-      name: g.name as string,
-      is_public: g.is_public as boolean,
-    })),
+    groupsRows,
     membersByGroup,
   );
   const totalGroups = groupAggs.length;

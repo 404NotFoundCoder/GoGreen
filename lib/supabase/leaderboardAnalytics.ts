@@ -8,6 +8,7 @@ import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { createClient } from "@/lib/supabase/client";
 import { TIMEZONE } from "@/constants/config";
 import {
+  fetchGroupMemberIds,
   fetchLeaderboardDailyStatsForPeriod,
   type LeaderboardDailyStatRow,
 } from "@/lib/supabase/leaderboard";
@@ -347,16 +348,6 @@ export async function fetchGlobalLeaderboardCharts(
     sdgDistribution,
     hotActions,
   };
-}
-
-async function fetchGroupMemberIds(groupId: string): Promise<string[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("group_members")
-    .select("user_id")
-    .eq("group_id", groupId);
-  if (error) throw error;
-  return (data ?? []).map((r) => r.user_id as string);
 }
 
 export async function fetchGroupLeaderboardCharts(

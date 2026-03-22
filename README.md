@@ -59,7 +59,7 @@ cp .env.example .env.local
 
 排行榜統計／個人與群組圖表與 SDG 覆蓋排名另需執行（順序不拘，皆 idempotent）：
 
-`20260321220000_leaderboard_analytics_rpc.sql`、`20260321230100_group_sdg_distribution_rpc.sql`、`20260321231000_leaderboard_user_sdg_goals_rpc.sql`、`20260321232000_leaderboard_user_checkin_split_rpc.sql`（函式說明見 [INSTRUCTIONS.md](./INSTRUCTIONS.md)「排行榜／分析用 RPC」）。
+`20260321220000_leaderboard_analytics_rpc.sql`、`20260321230100_group_sdg_distribution_rpc.sql`、`20260321231000_leaderboard_user_sdg_goals_rpc.sql`、`20260321232000_leaderboard_user_checkin_split_rpc.sql`、`20260322120000_leaderboard_group_members_rpc.sql`（函式說明見 [INSTRUCTIONS.md](./INSTRUCTIONS.md)「排行榜／分析用 RPC」）。
 
 完成後於 **Database → Replication**（或 SQL）將 `daily_checkins`、`user_daily_stats` 納入 Realtime publication（語句見 INSTRUCTIONS.md「Realtime 規範」）。
 

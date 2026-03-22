@@ -4,6 +4,7 @@ import {
   LeaderboardPeriodBar,
   periodScopeLabel,
 } from "@/components/leaderboard/LeaderboardPeriodBar";
+import { RankMark } from "@/components/leaderboard/RankMark";
 import {
   GlobalDailyCompletionBars,
   GroupMemberCountBars,
@@ -36,8 +37,8 @@ import {
   type LeaderboardPeriod,
   type RankedRow,
 } from "@/lib/utils/leaderboard";
-import { Flame, LayoutGrid, Trophy, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, LayoutGrid, Trophy, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 const USER_DIMS: { id: LeaderboardDimension; label: string }[] = [
   { id: "weighted", label: "總加權" },
@@ -243,21 +244,90 @@ function dailyCompletionSubtitle(
   return "";
 }
 
-function RankBadge({ rank }: { rank: number }) {
-  const ring =
-    rank === 1
-      ? "bg-gradient-to-br from-amber-100 to-amber-50 text-amber-950 shadow-sm ring-2 ring-amber-300/70"
-      : rank === 2
-        ? "bg-gradient-to-br from-slate-200 to-slate-100 text-slate-800 ring-1 ring-slate-300/80"
-        : rank === 3
-          ? "bg-gradient-to-br from-orange-100 to-orange-50 text-orange-950 ring-1 ring-orange-300/70"
-          : "border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] text-[var(--color-ink-secondary)]";
+function maxUserMetricOnPage(
+  rows: RankedRow[],
+  dimension: LeaderboardDimension,
+): number {
+  if (rows.length === 0) return 1;
+  let m = 0;
+  for (const row of rows) {
+    let v = 0;
+    if (dimension === "weighted") v = row.weightedPoints ?? 0;
+    else if (dimension === "score") v = row.totalRawScore;
+    else if (dimension === "count") v = row.totalTierBonusSum;
+    else v = sdgRankSum(row);
+    if (v > m) m = v;
+  }
+  return m > 0 ? m : 1;
+}
+
+function maxGroupMetricOnPage(
+  rows: GroupRankedRow[],
+  dimension: LeaderboardDimension,
+): number {
+  if (rows.length === 0) return 1;
+  let m = 0;
+  for (const row of rows) {
+    let v = 0;
+    if (dimension === "weighted") v = row.weightedPoints ?? 0;
+    else if (dimension === "score") v = row.avgRawScorePerMember;
+    else if (dimension === "count") v = row.avgTierBonusPerMember;
+    else v = row.avgSdgRankPerMember;
+    if (v > m) m = v;
+  }
+  return m > 0 ? m : 1;
+}
+
+function LeaderboardPaginationBar({
+  page,
+  totalPages,
+  totalCount,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalCount: number;
+  pageSize: number;
+  onPageChange: (p: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, totalCount);
   return (
-    <span
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums ${ring}`}
+    <nav
+      className="mt-4 flex flex-col items-stretch gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      aria-label="排行榜分頁"
     >
-      {rank}
-    </span>
+      <p className="text-center text-sm text-[var(--color-ink-secondary)] sm:text-left">
+        第 {from}–{to} 筆，共 {totalCount} 筆
+      </p>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="inline-flex min-h-[44px] items-center justify-center gap-1 rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] px-3 text-sm font-medium text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="上一頁"
+        >
+          <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+          上一頁
+        </button>
+        <span className="min-w-[4.5rem] text-center text-sm tabular-nums text-[var(--color-ink-secondary)]">
+          {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="inline-flex min-h-[44px] items-center justify-center gap-1 rounded-full border-[0.5px] border-[var(--color-muted)] bg-[var(--color-white)] px-3 text-sm font-medium text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="下一頁"
+        >
+          下一頁
+          <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+        </button>
+      </div>
+    </nav>
   );
 }
 
@@ -523,6 +593,11 @@ export function LeaderboardShell() {
   const [period, setPeriod] = useState<LeaderboardPeriod>("week");
   const [dimension, setDimension] =
     useState<LeaderboardDimension>("weighted");
+  const [listPage, setListPage] = useState(1);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [scope, period, dimension]);
 
   const { mine } = useGroups();
   const myGroupId = useMemo(() => {
@@ -536,13 +611,14 @@ export function LeaderboardShell() {
     return g?.name ?? "我的群組";
   }, [mine]);
 
-  const globalLb = useGlobalLeaderboard(period, dimension);
+  const globalLb = useGlobalLeaderboard(period, dimension, listPage);
   const groupLb = useGroupMemberLeaderboard(
     scope === "group" ? myGroupId : null,
     period,
     dimension,
+    listPage,
   );
-  const groupsLb = useGroupsLeaderboard(period, dimension);
+  const groupsLb = useGroupsLeaderboard(period, dimension, listPage);
   const personalLb = usePersonalLeaderboard(period);
 
   const globalCharts = useGlobalLeaderboardCharts(period, scope === "global");
@@ -557,35 +633,20 @@ export function LeaderboardShell() {
     scope === "group" && Boolean(myGroupId),
   );
 
-  const globalMax = useMemo(() => {
-    const rows = globalLb.data?.rows ?? [];
-    if (!rows.length) return 1;
-    const first = rows[0]!;
-    if (dimension === "weighted") return first.weightedPoints ?? 1;
-    if (dimension === "score") return first.totalRawScore || 1;
-    if (dimension === "count") return first.totalTierBonusSum || 1;
-    return sdgRankSum(first) || 1;
-  }, [globalLb.data?.rows, dimension]);
+  const globalMax = useMemo(
+    () => maxUserMetricOnPage(globalLb.data?.rows ?? [], dimension),
+    [globalLb.data?.rows, dimension],
+  );
 
-  const groupMax = useMemo(() => {
-    const rows = groupLb.data?.rows ?? [];
-    if (!rows.length) return 1;
-    const first = rows[0]!;
-    if (dimension === "weighted") return first.weightedPoints ?? 1;
-    if (dimension === "score") return first.totalRawScore || 1;
-    if (dimension === "count") return first.totalTierBonusSum || 1;
-    return sdgRankSum(first) || 1;
-  }, [groupLb.data?.rows, dimension]);
+  const groupMax = useMemo(
+    () => maxUserMetricOnPage(groupLb.data?.rows ?? [], dimension),
+    [groupLb.data?.rows, dimension],
+  );
 
-  const groupsMax = useMemo(() => {
-    const rows = groupsLb.data?.rows ?? [];
-    if (!rows.length) return 1;
-    const first = rows[0]!;
-    if (dimension === "weighted") return first.weightedPoints ?? 1;
-    if (dimension === "score") return first.avgRawScorePerMember || 1;
-    if (dimension === "count") return first.avgTierBonusPerMember || 1;
-    return first.avgSdgRankPerMember || 1;
-  }, [groupsLb.data?.rows, dimension]);
+  const groupsMax = useMemo(
+    () => maxGroupMetricOnPage(groupsLb.data?.rows ?? [], dimension),
+    [groupsLb.data?.rows, dimension],
+  );
 
   return (
     <div className="min-w-0 space-y-8">
@@ -791,7 +852,7 @@ export function LeaderboardShell() {
                   className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <RankBadge rank={row.rank} />
+                    <RankMark rank={row.rank} />
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
                       {avatarLetter(row.nickname)}
                     </div>
@@ -813,6 +874,15 @@ export function LeaderboardShell() {
                 </li>
               ))}
             </ol>
+          ) : null}
+          {!globalLb.loading && globalLb.data && globalLb.data.rows.length > 0 ? (
+            <LeaderboardPaginationBar
+              page={globalLb.data.page}
+              totalPages={globalLb.data.totalPages}
+              totalCount={globalLb.data.totalParticipants}
+              pageSize={globalLb.data.pageSize}
+              onPageChange={setListPage}
+            />
           ) : null}
         </section>
       ) : null}
@@ -949,13 +1019,15 @@ export function LeaderboardShell() {
 
               {!groupLb.loading &&
               groupLb.data &&
-              groupLb.data.rows.length > 0 ? (
+              (groupLb.data.memberBarRows?.length ?? 0) > 0 ? (
                 <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
                   <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                    各成員完成項數
+                    各成員完成項數（前 12）
                   </h3>
                   <div className="mt-3">
-                    <GroupMemberCountBars rows={groupLb.data.rows} />
+                    <GroupMemberCountBars
+                      rows={groupLb.data.memberBarRows ?? []}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -988,7 +1060,7 @@ export function LeaderboardShell() {
                         className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center"
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          <RankBadge rank={row.rank} />
+                          <RankMark rank={row.rank} />
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
                             {avatarLetter(row.nickname)}
                           </div>
@@ -1010,6 +1082,13 @@ export function LeaderboardShell() {
                       </li>
                     ))}
                   </ol>
+                  <LeaderboardPaginationBar
+                    page={groupLb.data.page}
+                    totalPages={groupLb.data.totalPages}
+                    totalCount={groupLb.data.totalParticipants}
+                    pageSize={groupLb.data.pageSize}
+                    onPageChange={setListPage}
+                  />
                 </>
               ) : null}
             </>
@@ -1034,11 +1113,11 @@ export function LeaderboardShell() {
                 「{periodScopeLabel(period)}」平均原始分領先
               </p>
               <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
-                {groupsLb.data?.rows[0]?.name ?? "—"}
+                {groupsLb.data?.topAvgRaw?.name ?? "—"}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                {groupsLb.data?.rows[0]
-                  ? `平均 ${groupsLb.data.rows[0].avgRawScorePerMember.toFixed(1)} 分`
+                {groupsLb.data?.topAvgRaw
+                  ? `平均 ${groupsLb.data.topAvgRaw.avg.toFixed(1)} 分`
                   : ""}
               </p>
             </div>
@@ -1047,25 +1126,27 @@ export function LeaderboardShell() {
                 SDG 覆蓋最高群組
               </p>
               <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
-                {groupsLb.data?.rows.length
-                  ? [...groupsLb.data.rows].sort(
-                      (a, b) =>
-                        b.avgSdgRankPerMember - a.avgSdgRankPerMember,
-                    )[0]?.name ?? "—"
-                  : "—"}
+                {groupsLb.data?.topSdg?.name ?? "—"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                {groupsLb.data?.topSdg
+                  ? `平均指標 ${groupsLb.data.topSdg.avg.toFixed(1)}`
+                  : ""}
               </p>
             </div>
           </div>
           {!groupsLb.loading &&
           groupsLb.data &&
-          groupsLb.data.rows.length > 0 ? (
+          groupsLb.data.totalGroups > 0 ? (
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
                 <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                   各群組平均分（前 8）
                 </h3>
                 <div className="mt-3">
-                  <GroupsAvgScoreBars rows={groupsLb.data.rows} />
+                  <GroupsAvgScoreBars
+                    rows={groupsLb.data.chartTopByScore ?? []}
+                  />
                 </div>
               </div>
               <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
@@ -1073,7 +1154,7 @@ export function LeaderboardShell() {
                   各群組 SDG 覆蓋（前 8）
                 </h3>
                 <div className="mt-3">
-                  <GroupsSdgBars rows={groupsLb.data.rows} />
+                  <GroupsSdgBars rows={groupsLb.data.chartTopBySdg ?? []} />
                 </div>
               </div>
             </div>
@@ -1101,7 +1182,7 @@ export function LeaderboardShell() {
                   className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <RankBadge rank={row.rank} />
+                    <RankMark rank={row.rank} />
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
                       {avatarLetter(row.name)}
                     </div>
@@ -1130,6 +1211,17 @@ export function LeaderboardShell() {
                 </li>
               ))}
             </ol>
+          ) : null}
+          {!groupsLb.loading &&
+          groupsLb.data &&
+          groupsLb.data.totalGroups > 0 ? (
+            <LeaderboardPaginationBar
+              page={groupsLb.data.page}
+              totalPages={groupsLb.data.totalPages}
+              totalCount={groupsLb.data.totalGroups}
+              pageSize={groupsLb.data.pageSize}
+              onPageChange={setListPage}
+            />
           ) : null}
         </section>
       ) : null}

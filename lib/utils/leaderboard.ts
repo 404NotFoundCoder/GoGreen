@@ -1,4 +1,3 @@
-import { LEADERBOARD_LIMIT } from "@/constants/config";
 import { DEFAULT_ITEM_POINTS, getStreakTierBonus } from "@/constants/scoring";
 
 export type LeaderboardPeriod = "week" | "month" | "all";
@@ -168,12 +167,27 @@ export function rankAllUsers(
   }));
 }
 
-export function sortByDimension(
+/** 依維度排序後分頁（名次為全榜名次，非頁內從 1 重算） */
+export function pageRankedUsers(
   users: UserPeriodAgg[],
   dimension: LeaderboardDimension,
   weighted: Map<string, number>,
-): RankedRow[] {
-  return rankAllUsers(users, dimension, weighted).slice(0, LEADERBOARD_LIMIT);
+  page: number,
+  pageSize: number,
+): {
+  rows: RankedRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+} {
+  const full = rankAllUsers(users, dimension, weighted);
+  const totalCount = full.length;
+  const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / pageSize);
+  const p = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
+  const start = (p - 1) * pageSize;
+  const rows = full.slice(start, start + pageSize);
+  return { rows, totalCount, page: p, pageSize, totalPages };
 }
 
 /** 群組 vs 群組：以成員期間聚合後，對群組取平均原始分、平均完成數、SDG 覆蓋等 */
@@ -394,18 +408,25 @@ export function rankAllGroups(
   }));
 }
 
-export function sortGroupsByDimension(
+/** 依維度排序後分頁（名次為全榜名次） */
+export function pageRankedGroups(
   groups: GroupPeriodAgg[],
   dimension: LeaderboardDimension,
   weighted: Map<string, number>,
-): GroupRankedRow[] {
-  const sorted = [...groups];
-  sortGroupsInPlace(sorted, dimension, weighted);
-  const breakdown = computeGroupWeightedBreakdown(groups);
-  return sorted.slice(0, LEADERBOARD_LIMIT).map((u, i) => ({
-    ...u,
-    rank: i + 1,
-    weightedPoints: weighted.get(u.groupId),
-    weightedBreakdown: breakdown.get(u.groupId),
-  }));
+  page: number,
+  pageSize: number,
+): {
+  rows: GroupRankedRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+} {
+  const full = rankAllGroups(groups, dimension, weighted);
+  const totalCount = full.length;
+  const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / pageSize);
+  const p = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
+  const start = (p - 1) * pageSize;
+  const rows = full.slice(start, start + pageSize);
+  return { rows, totalCount, page: p, pageSize, totalPages };
 }

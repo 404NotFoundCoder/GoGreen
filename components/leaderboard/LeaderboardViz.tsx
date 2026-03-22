@@ -1,5 +1,6 @@
 "use client";
 
+import { RankMark } from "@/components/leaderboard/RankMark";
 import { SDG_COLORS } from "@/constants/sdg";
 import type { DailyCompletionPoint } from "@/lib/supabase/leaderboardAnalytics";
 import type { GroupRankedRow, RankedRow } from "@/lib/utils/leaderboard";
@@ -150,9 +151,9 @@ export function GroupsAvgScoreBars({ rows }: { rows: GroupRankedRow[] }) {
     <div className="space-y-2">
       {list.map((r) => (
         <div key={r.groupId} className="flex items-center gap-2 text-sm">
-          <span className="w-6 shrink-0 font-semibold text-[var(--color-primary-dark)]">
-            {r.rank}
-          </span>
+          <div className="flex w-7 shrink-0 items-center justify-center">
+            <RankMark rank={r.rank} size="sm" />
+          </div>
           <span className="min-w-0 flex-1 truncate text-[var(--color-ink)]">
             {r.name}
           </span>
@@ -179,9 +180,9 @@ export function GroupMemberCountBars({ rows }: { rows: RankedRow[] }) {
     <div className="space-y-2">
       {list.map((r) => (
         <div key={r.userId} className="flex items-center gap-2 text-sm">
-          <span className="w-6 shrink-0 font-semibold text-[var(--color-primary-dark)]">
-            {r.rank}
-          </span>
+          <div className="flex w-7 shrink-0 items-center justify-center">
+            <RankMark rank={r.rank} size="sm" />
+          </div>
           <span className="min-w-0 flex-1 truncate text-[var(--color-ink)]">
             {r.nickname}
           </span>
@@ -208,9 +209,9 @@ export function GroupsSdgBars({ rows }: { rows: GroupRankedRow[] }) {
     <div className="space-y-2">
       {list.map((r) => (
         <div key={r.groupId} className="flex items-center gap-2 text-sm">
-          <span className="w-6 shrink-0 font-semibold text-[var(--color-primary-dark)]">
-            {r.rank}
-          </span>
+          <div className="flex w-7 shrink-0 items-center justify-center">
+            <RankMark rank={r.rank} size="sm" />
+          </div>
           <span className="min-w-0 flex-1 truncate text-[var(--color-ink)]">
             {r.name}
           </span>

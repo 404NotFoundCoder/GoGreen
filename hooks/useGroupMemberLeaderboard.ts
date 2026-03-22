@@ -10,6 +10,7 @@ export function useGroupMemberLeaderboard(
   groupId: string | null,
   period: LeaderboardPeriod,
   dimension: LeaderboardDimension,
+  page: number,
 ) {
   const { user } = useAuthContext();
   const [data, setData] = useState<Awaited<
@@ -40,7 +41,7 @@ export function useGroupMemberLeaderboard(
         if (!opts?.silent) setLoading(false);
       }
     },
-    [groupId, period, dimension],
+    [groupId, period, dimension, page],
   );
 
   useEffect(() => {

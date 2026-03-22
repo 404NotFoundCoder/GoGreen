@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 export function useGlobalLeaderboard(
   period: LeaderboardPeriod,
   dimension: LeaderboardDimension,
+  page: number,
 ) {
   const { user } = useAuthContext();
   const [data, setData] = useState<Awaited<
@@ -22,7 +23,7 @@ export function useGlobalLeaderboard(
       if (!opts?.silent) setLoading(true);
       setError(null);
       try {
-        const result = await fetchGlobalLeaderboard(period, dimension);
+        const result = await fetchGlobalLeaderboard(period, dimension, page);
         setData(result);
       } catch (e) {
         setError(e instanceof Error ? e : new Error(String(e)));
@@ -30,7 +31,7 @@ export function useGlobalLeaderboard(
         if (!opts?.silent) setLoading(false);
       }
     },
-    [period, dimension],
+    [period, dimension, page],
   );
 
   useEffect(() => {

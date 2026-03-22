@@ -62,14 +62,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <div className="flex min-h-0 flex-1 flex-col pb-24 lg:pb-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-24 lg:pb-0">
           <div className="sticky top-0 z-20 border-b-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3 lg:hidden">
             <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
               <BrandMark href="/today" size="nav" />
               <UserAccountMenu variant="bar" />
             </div>
           </div>
-          <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 lg:max-w-5xl lg:px-8 lg:py-10">
+          <div className="mx-auto w-full min-w-0 max-w-3xl flex-1 px-4 py-6 lg:max-w-5xl lg:px-8 lg:py-10">
             {children}
           </div>
         </div>

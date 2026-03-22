@@ -13,7 +13,7 @@ export default function LeaderboardPage() {
         <p className="max-w-2xl text-sm leading-relaxed text-[var(--color-ink-secondary)]">
           切換全體、群組內、各群組間與個人視角；支援本週／本月／累計。群組對群組以成員
           <strong className="font-semibold text-[var(--color-ink)]">
-            平均標準化分
+            平均原始分
           </strong>
           等聚合後排名。
         </p>

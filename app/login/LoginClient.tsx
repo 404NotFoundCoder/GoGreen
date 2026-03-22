@@ -2,23 +2,10 @@
 
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export function LoginClient({ initialError }: { initialError: string | null }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    try {
-      const supabase = createClient();
-      void supabase.auth.getSession().then(({ data }) => {
-        if (data.session?.user) router.replace("/today");
-      });
-    } catch {
-      /* 未設定 env 時仍顯示登入頁 */
-    }
-  }, [router]);
 
   const signInGoogle = async () => {
     setBusy(true);

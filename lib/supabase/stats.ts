@@ -50,3 +50,23 @@ export async function fetchUserDailyStatsRecent(
   if (error) throw error;
   return (data ?? []) as DailyStatRow[];
 }
+
+/** 指定期間內每日統計（由舊到新），供圖表／熱力圖 */
+export async function fetchUserDailyStatsInRange(
+  userId: string,
+  from: string,
+  to: string,
+): Promise<DailyStatRow[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("user_daily_stats")
+    .select(
+      "date, completed_count, total_items, raw_score, normalized_score, streak, sdg_coverage",
+    )
+    .eq("user_id", userId)
+    .gte("date", from)
+    .lte("date", to)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as DailyStatRow[];
+}

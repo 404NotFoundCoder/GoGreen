@@ -171,19 +171,19 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 | 路徑             | 說明                                      |
 | ---------------- | ----------------------------------------- |
 | `/`              | 首頁（未登入；玩法說明、Google 開始 CTA） |
-| `/login`         | 登入頁（Google）                          |
-| `/auth/callback` | Supabase OAuth callback                   |
+| `/login`         | 登入頁（Google）；OAuth 失敗時 `/auth/callback` 會導向 **`/login?error=auth`**，`LoginClient` 顯示「登入失敗，請重試。」 |
+| `/auth/callback` | Supabase OAuth callback：`code` 換取 session 成功則導向 `next`（預設 `/today`）；失敗或無 `code` 則 **`redirect('/login?error=auth')`** |
 | `/today`         | 今日檢核（需登入）                        |
 | `/leaderboard`   | 排行榜：全體／群組內／各群間／個人（需登入） |
 | `/groups`        | 群組（需登入）                            |
-| `/profile`       | 個人／暱稱（需登入）                      |
+| `/profile`       | 個人：`ProfileForm`（暱稱）；`ProfileAnalyticsShell`（`LeaderboardPeriodBar` 期間、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）（需登入） |
 
 **登入保護：** `app/(app)/layout.tsx` 為 Server Component，使用 `lib/supabase/server.ts` 的 `createClient()` 呼叫 `supabase.auth.getUser()`；未登入則 `redirect('/login')`。**未使用** 根目錄 `middleware.ts`（若日後改為 Edge Middleware 保護路由，請同步更新本節）。
 
 **對應程式：**
 
-- **Hooks（`hooks/`）**：`useTodayChecklist`、`useGlobalLeaderboard`、`useGroups`、`useProfile`
-- **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`
+- **Hooks（`hooks/`）**：`useTodayChecklist`、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`、`useProfile`（完整檔名見「分層職責說明」）
+- **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
 
 ---
 
@@ -202,8 +202,10 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### 公版清單管理 `[planned]`
 
+> **後台／群組管理 UI 尚未實作**（逐筆維護、CSV 上傳）；與「創群時選範本」同列待辦。
+
 公版清單是**群組層級**，每個群組在創群時設定自己的公版清單。
-無群組的使用者使用系統預設公版（`checklist_templates` 表中 `is_default = true`）。
+無群組的使用者使用系統預設公版（`checklist_templates` 表中 `is_default = true`）；**seed 行動筆數與文案**以 `supabase/migrations/20260321000000_initial.sql` 為準（目前 **10** 筆 `checklist_items`）。
 
 管理員（群組創建者）可透過兩種方式維護：
 
@@ -232,13 +234,13 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - `[done]` **RLS／查詢**：`groups.g_select` 為 `is_public OR created_by = auth.uid() OR EXISTS (…group_members…)`（`migration 20260321160000`）；`group_members` 的 SELECT 僅 **`gm_select`**：`auth.uid() = user_id`。**勿**在遠端同時保留舊名 **`"members read"`**（子查詢 `group_members` 自參照）與 **`gm_select`**，否則仍會 **infinite recursion**（`migration 20260321170000` 刪除舊名）。**`listMyGroups`** 勿使用 PostgREST 嵌套 `group_members(..., groups(...))` 單一請求，改為兩次查詢後合併（見 **v0.10.20**）
 - `[done]` **操作回饋**：群組相關成功／錯誤以 **`ToastProvider`**（`context/ToastContext.tsx`）底部 toast 提示
 - `[未實作]` 創群時設定此群組的公版清單（可從系統預設複製後修改）；目前僅使用系統預設公版範本
-- `[planned]` 群組間排名使用**平均標準化分**（見「排行榜設計 → 群組 vs 群組」；後端 view 可擴充，前端頁 `[planned]`）
+- `[done]` 群組間排名（**平均標準化分**等聚合）與 `/leaderboard`「各群間」視角（見「排行榜設計 → 群組 vs 群組」）；進階可改為純 SQL／RPC 對齊 `leaderboard_groups` view
 
 ### 認證與使用者 `[done]`
 
 - `[done]` 透過 Google 登入（Supabase Auth）
 - `[done]` 新使用者寫入 `public.users`（trigger）；首次進入 App 會跳出**暱稱引導**（可改寫暱稱），完成後不再顯示（`users.onboarding_completed`，見 migration `20260321100000_user_onboarding.sql`）
-- `[done]` 使用者可在 `/profile` 修改暱稱；暱稱顯示於排行榜
+- `[done]` 使用者可在 `/profile` 修改暱稱（預設為**顯示暱稱**＋**鉛筆**進入編輯，非預設即為輸入框）；暱稱顯示於排行榜與側欄（`ProfileForm`）
 - `[done]` 後端仍以 Google 名稱／email 前綴作為初次後備暱稱（見 `handle_new_user`）
 
 ### 自訂行動 `[done]`
@@ -278,16 +280,10 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 每個行動（公版或自訂）完成得 `DEFAULT_ITEM_POINTS` 分，暫定 **10 分**。
 每個 item 存有 `points` 欄位，未來可個別調整。
 
-### 標準化分（用於跨群組比較）
+### 分數（排行榜與每日統計）
 
-```
-標準化分 = (完成項目數 / 所在群組總項目數) × 100 + streak tier 加成
-```
-
-- 分母 = 該使用者所在群組的公版項目數 + 個人自訂項目數
-- 無群組的使用者以系統預設公版項目數 + 個人自訂項目數為分母
-- **標準化分用於：全體榜、群組間榜、群組內榜**（統一口徑，方便比較）
-- **個人記錄頁顯示原始數字**（完成項數、原始得分、streak 天數），不標準化
+- 每日 `user_daily_stats.raw_score` 為當日各完成項 points 加總；**排行榜「分數」維度**為所選期間內**加總**（與個人紀錄一致）；介面統稱「分數」，不稱「原始分」。
+- 舊版「標準化分」已不再作為排行榜排序依據；若需完成率語意請參考打卡與模板設定，不在此重複。
 
 ### Streak Tier 加成
 
@@ -306,7 +302,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ## 排行榜設計
 
-四個視角，每個視角均支援時間維度切換：**本週 / 本月 / 累計**。
+四個視角，每個視角均支援時間維度切換：**本週 / 本月 / 至今**。
+
+> **狀態標示**：章節標題的 `[done]`／`[部分完成]` 依「該節**所有**子項是否皆已實作」更新（見文件開頭規則）。先前「群組內／群組 vs 群組」曾標部分完成，**實作已齊**後已改為 `[done]`；「個人記錄」因 streak 專區仍待補，維持 `[部分完成]`。
 
 ### 四個排名子 Tab
 
@@ -315,9 +313,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 | Tab      | 排名依據                                | 說明                       |
 | -------- | --------------------------------------- | -------------------------- |
 | 總加權   | 三個維度名次積分加總                    | 綜合表現                   |
-| 分數     | 標準化分                                | 完成率 × 100 + streak 加成 |
-| 完成數   | 總完成項目數（含自訂）                  | 行動量                     |
-| SDG 覆蓋 | 涵蓋不同 SDG 目標數（含自訂行動的 SDG） | 行動廣度                   |
+| 分數     | 期間內分數加總（各完成項 points）       | `raw_score` 日加總         |
+| Streak Tier 加成 | 期間內每日依當日連續天數對應 tier 加分加總（1–6 天 +5、7–13 +15、14–29 +30、≥30 +50） | 與 `streak_tier_bonus`／`getStreakTierBonus` 一致；列表顯示 `5×n日 + …` 拆項 |
+| SDG 覆蓋 | 名次依 N+M（N＝期間相異 SDG 數；M＝期間內單日涵蓋最大；`rpc_leaderboard_user_sdg_goals` + `user_daily_stats`） | 兼顧廣度與單日深度 |
 
 **總加權積分計算（線性積分，人少時自然縮小分差）：**
 
@@ -327,42 +325,48 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 ...
 最後一名 → 1 積分
 
-總加權 = 分數維度積分 + 完成數維度積分 + SDG 覆蓋維度積分
+總加權 = 分數維度積分 + Streak Tier 加成維度積分 + SDG 覆蓋維度積分
 ```
 
 ### 全體排行榜
 
 - 所有使用者公開姓名，無隱私選項
 - 顯示前 `LEADERBOARD_LIMIT` 名
-- **前端**：`/leaderboard` 主視角 **全體**；本週／本月／累計與四子 tab（總加權／分數／完成數／SDG 覆蓋）；Realtime `user_daily_stats`；參與人數卡、`LeaderboardShell` 質感列表（名次徽章、頭像字首、指標條）
-- 統計面板：本期參與人數 `totalParticipants` `[done]`；全體行動次數、本週最熱門行動、SDG 全覆蓋狀況等 `[planned]`
-- 圖表：全體 SDG 行動分布（長條圖）、每日完成項次趨勢（折線圖）`[planned]`
+- **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；圖表與統計子區塊由 `LeaderboardViz` 等組合；Realtime `user_daily_stats`；統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
+- 統計面板：參與人數、完成項次加總、9+ SDG 覆蓋人數、熱門行動等皆標註所選期間 `[done]`
+- 圖表：完成項次柱狀（本週每日／本月四週／至今依資料跨度自動：未滿一週補齊曆週 7 日→8～31 天四週→32 天～一年按月→逾年按年）；SDG 行動分布（佔總次數 %）；熱門行動 Top 5；migration 見 `rpc_global_*`
 
-### 群組內排行榜 `[部分完成]`
+### 群組內排行榜 `[done]`
 
-- **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
-- 統計面板：群組總分、SDG 覆蓋數、最長 streak、本週最活躍成員 `[planned]`
-- 圖表：群組 SDG 行動分布（長條圖）、各成員完成項數比較（長條圖）`[planned]`
+- **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`（以 `group_members` **全體成員**為準，無打卡者仍列入 0 分）、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
+- 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）
+- 圖表：各成員完成項數橫條比較 `[done]`（`GroupMemberCountBars`）；**本群**每日完成項次（期間補 0）、**本群** SDG 行動分布（`rpc_group_sdg_distribution`，需 `20260321230100_group_sdg_distribution_rpc.sql`）
 - 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
-### 群組 vs 群組 `[部分完成]`
+### 群組 vs 群組 `[done]`
 
-- **排名邏輯**：群組間以成員期間表現聚合——**平均標準化分**（成員先各自期間平均，再對成員平均）、**平均完成數**（總完成數 ÷ 成員數）、**SDG 覆蓋**（成員單日覆蓋數之最大）、**總加權**（三維度線性積分，與全體同構）。目前於 **`lib/supabase/leaderboard.fetchGroupsLeaderboard`** 以 `user_daily_stats` + `group_members` 客戶端聚合（與文件 `leaderboard_groups` view 概念對齊，可再改為純 SQL／RPC）
-- **前端**：`LeaderboardShell`「各群間」、四子 tab 標籤（平均分／平均完成數／…）`[done]`
-- 統計面板：群組總數等進階摘要、最活躍群組、最長 streak `[planned]`
+- **排名邏輯**：群組間以成員期間表現聚合——**平均分數**、**平均 Streak Tier 加成**、**SDG 覆蓋（成員 N+M 於群內平均）**、**總加權**（三維度線性積分，與全體同構）。實作於 **`lib/supabase/leaderboard.fetchGroupsLeaderboard`**
+- **前端**：`LeaderboardShell`「各群間」、四子 tab（平均分數／平均 Streak Tier 加成／…）`[done]`
+- 統計面板：參與群組數、平均分數領先、SDG 覆蓋最高群組 `[done]`
 - 群組列表：公開/私人 badge、成員數、指標條 `[done]`
-- 圖表：各群組平均分／SDG 覆蓋比較（長條圖）`[planned]`
+- 圖表：各群組平均分數、SDG 覆蓋橫條比較（前 8）`[done]`
 
-### 個人記錄 `[進行中]`
+### 個人記錄 `[部分完成]`
 
-> **`/profile`**：暱稱編輯 `[done]`；近 14 天 `user_daily_stats` 表格（原始值）`[done]`。
+> **`/profile`**：暱稱（點筆編輯）`[done]`；**分析區**為 `ProfileAnalyticsShell`：`LeaderboardPeriodBar` 選期間 → `ProfileLeaderboardSummary`（我的排行摘要）→ `ProfileChartsSection`（打卡密度／完成項次／SDG）→ `ProfileDailyStats`（近 14 天 `user_daily_stats` 原始值表格）`[done]`。**本週／本月**與排行榜期間一致；選 **「至今」** 時，圖表／熱力等為 **今年 1/1～今日**（`getYearStartString`～`getTodayString`），與全體榜「至今」累計區間不同；「我的排行摘要」仍依榜單「至今」邏輯。
 
-- **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間累計原始分、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
+- **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間分數加總、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
 - 統計數字全部顯示**原始值**，不標準化（與榜單標準化分並存於不同區塊）
-- 打卡日曆（密度色塊，類似 GitHub contribution graph）`[planned]`（`/profile` 可擴充）
-- 每日分數趨勢（折線圖）`[planned]`
-- 個人 SDG 覆蓋分布（長條圖）`[planned]`
-- Streak 紀錄（目前連續 / 最長連續）`[部分]`（榜單已顯示期間最佳單日 streak）
+- **打卡密度與色階**（`ProfileChartsSection` 第一區；資料來源 `fetchUserProfileCharts` → 期間內每日 `completed_count`／`total_items`／`raw_score`）：
+  - **五階色階**（圖例：**無／少／一半／多／全完成**）：優先依當日 **`completed_count / total_items`** 比例分級——未滿為 **少**（≤3 項且比例 &lt;50%）、**一半**（≥50% 且未全滿）、**多**（其餘未全滿）；**全完成**為當日清單全勾；無 `total_items` 時改以完成項數區分。**圖例色塊**與 `HEAT_BG` 同步，語意為主、非固定「幾項」門檻。
+  - **密度上方摘要卡**（三格）：**累計得分**（期間內 `raw_score` 加總）、**打卡天數**（`completed_count > 0` 之日數）、**最長 streak**（期間內依曆日連續有打卡之最長天數）；與所選本週／本月／今年至今區間一致。
+  - **Hover／tooltip（全期間共用）**：`M/d · N 項完成 · 分`（`raw_score`）；未打卡為 `0 項完成 · 0 分`；未來日為「尚未到達」。以原生 `title` 呈現（行動裝置可無 hover，仍可靠長按或無障礙朗讀延伸）。
+  - **本週**：橫向 **七日卡**（週一～週日），每卡僅顯示 **完成項數（N 項）**，不顯示分數；**今日**以 **inset ring**（或等效內縮強調）標示，**勿**用 `ring-offset` 疊在橫向捲動邊緣（易裁切破圖）；**未來日期**為留白卡＋「·」。色階同上五階。
+  - **本月**：**月曆格**（七欄對齊週一～週日）；**星期列與日期格必須共用全寬**（同一 `grid-cols-7`＋`minmax(0,1fr)`，**禁止**僅對下方格子設 `max-w` 而表頭全寬，否則會跑版）；格內顯示 **N 項**（0 項留白），色階同上五階。
+  - **至今**（個人頁）：後端統計區間仍為 **今年 1/1～今日**（與完成項次／SDG 一致）；**熱力圖**則繪製 **今年完整 1/1～12/31** 之曆週欄（`getYearStartString`～`getYearEndString`），未來日空白；**GitHub 貢獻圖式**小方格（欄＝曆週、列＝週一～週日，`gap-px`）；**桌面**（`md+`）熱力區與摘要卡**同寬**（週欄 `flex-1`、格 `aspect-square`）；**手機**（`&lt;md`）週欄固定 **`w-3`**、整段 **`overflow-x-auto`** 可橫向滑動，避免擠壓跑版；**頂列橫向標示月份（M 月）**；方格**不**顯示項數。
+- **完成項次**（柱狀，`GlobalDailyCompletionBars`）：個人期間內每日／四週／月等粒度與全體榜同構，**不**另含「每日原始分趨勢」圖。
+- 個人 **SDG 行動分布**（長條圖）`[done]`（`rpc_my_sdg_distribution`）
+- Streak 紀錄（**目前連續**／**歷史最長**並列於個人專區）`[planned]`（現僅於榜單「個人」視角顯示**期間內**最佳單日 streak；近 14 天表可側面參考）
 
 ---
 
@@ -469,13 +473,13 @@ components/       → UI 元件，分功能型（可用 context）與純展示�
 hooks/            → 業務邏輯、資料操作、UI 狀態管理（見下「目前檔案」）
 context/          → 跨頁面共享的全域狀態（e.g. AuthContext、ToastContext）
 lib/supabase/     → Supabase 所有查詢與操作的唯一入口（見下「目前檔案」）
-lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `invite.ts`、`error.ts`、`groupErrors.ts`）
+lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `invite.ts`、`error.ts`、`groupErrors.ts`、`leaderboardPeriod.ts`、`leaderboard.ts`）
 constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
 ```
 
-**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGroups.ts`、`useProfile.ts`
+**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGlobalLeaderboardCharts.ts`、`useGroupMemberLeaderboard.ts`、`useGroupsLeaderboard.ts`、`usePersonalLeaderboard.ts`、`useGroupLeaderboardCharts.ts`、`useGroupPeriodStats.ts`、`useGroups.ts`、`useProfile.ts`、`useProfileNickname.ts`
 
-**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`
+**`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
 
 **元件分兩種：**
 
@@ -725,6 +729,19 @@ join group_members gm on gm.group_id = g.id
 join leaderboard_global s on s.user_id = gm.user_id
 group by g.id, g.name, g.is_public;
 ```
+
+### 排行榜／分析用 RPC（SECURITY DEFINER）
+
+跨使用者讀取 `daily_checkins` 或做榜單專用聚合時，以 **RPC** 實作（`security definer`）。**新環境**除 `20260321000000_initial.sql` 外，請依專案需求執行下列檔案（見 `supabase/migrations/`）：
+
+| Migration 檔 | 函式（摘要） |
+| --- | --- |
+| `20260321220000_leaderboard_analytics_rpc.sql` | `rpc_global_sdg_distribution`、`rpc_global_hot_actions`、`rpc_my_sdg_distribution` |
+| `20260321230100_group_sdg_distribution_rpc.sql` | `rpc_group_sdg_distribution`（群組成員期間內 SDG 次數） |
+| `20260321231000_leaderboard_user_sdg_goals_rpc.sql` | `rpc_leaderboard_user_sdg_goals`（每位使用者期間相異 SDG，供 SDG 覆蓋維度） |
+| `20260321232000_leaderboard_user_checkin_split_rpc.sql` | `rpc_leaderboard_user_checkin_split`（公版／自訂打卡次數拆項；`lib/supabase/leaderboard.ts` 使用） |
+
+前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
 
 ### Row Level Security（RLS）
 
@@ -1070,8 +1087,8 @@ Tailwind 預設斷點，統一使用，不自訂：
 | ----------- | -------------------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
 | 主導航      | 底部 tab bar                                                                     | 底部 tab bar     | 左側 sidebar                             |
 | 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]` |
-| 排行榜      | 全寬列表                                                                         | 全寬列表         | 全寬列表（側邊圖表為目標 `[planned]`）   |
-| 統計圖表    | 全寬                                                                             | 全寬             | 並排顯示 `[planned]`                     |
+| 排行榜      | 全寬列表                                                                         | 全寬列表         | 全寬列表；統計卡＋圖表區為 **lg: 雙欄並排**（`LeaderboardShell`）`[done]` |
+| 統計圖表    | 全寬                                                                             | 全寬             | 並排顯示（與上欄對齊）`[done]`             |
 
 ### 觸控規範（手機 / 平板）
 
@@ -1253,6 +1270,53 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-22] v0.10.34 — 未 commit 變更與文件對齊
+
+- `[DOCS]` **路由與登入**：`/auth/callback` 失敗 → `/login?error=auth`；`/profile` 路由列改為 `ProfileForm` + `ProfileAnalyticsShell`（`LeaderboardPeriodBar`、`ProfileLeaderboardSummary`、`ProfileChartsSection`、`ProfileDailyStats`）
+- `[DOCS]` **分層職責**：`hooks/` 補齊排行榜相關 hook；`lib/utils` 範例補 `leaderboardPeriod.ts`；**資料庫**新增「排行榜／分析用 RPC」表（含 `rpc_leaderboard_user_sdg_goals`、`rpc_leaderboard_user_checkin_split` 等四個 migration 檔）
+- `[DOCS]` **README**：本地資料庫步驟補上述四個 RPC migration；功能表「個人資料」一行與實作對齊
+- `[FIX]` **`AppShell`**：主內容外層與 page 容器加 **`min-w-0`**，避免 flex 版面橫向溢出
+- `[DB]` `20260321000000_initial.sql`：系統預設公版 `checklist_items` seed 改為 **10 筆**（標題／說明／`sdg_ids` 更新）
+
+### [2026-03-21] v0.10.33 — 手機熱力橫向滑動、五階色階
+
+- `[FIX]`「至今」熱力：`md` 以下 **`overflow-x-auto`**、週欄 **`w-3` shrink-0**；`md+` 維持 **`flex-1`** 與卡片同寬
+- `[FEAT]` 打卡密度改 **五階**（無／少／一半／多／全完成）：`heatLevel` 依 **`total_items` 完成比例**個人化；圖例改為對應 **`HEAT_BG`** 之語意標籤
+- `[DOCS]` **個人記錄**色階與至今手機捲動、本 Changelog
+
+### [2026-03-21] v0.10.32 — 至今熱力圖與同區同寬
+
+- `[FIX]` `ProfileChartsSection`「至今」GitHub 熱力：週欄 **`flex-1` 均分全寬**、`HeatCell` **`fluid`**（`aspect-square`）取代固定 10px，與上方摘要卡／本週／本月同寬
+- `[DOCS]` **個人記錄**至今熱力版面一句、本 Changelog
+
+### [2026-03-21] v0.10.31 — 今年完整熱力、摘要卡、統一 tooltip
+
+- `[FEAT]` `getYearEndString`；選「至今」時熱力圖改為 **今年 1/1～12/31** 完整曆格；統計摘要三卡（累計得分、打卡天數、最長 streak）；各視圖方格 **hover** 為 `M/d · N 項完成 · 分`
+- `[FIX]` 至今 GitHub 熱力：**月份列與週欄改為同一個 CSS Grid**（`grid-template-columns: 1.25rem repeat(N, minmax(0.75rem, 1fr))`），避免頂列與格子兩段 `flex` 各自 `flex-1` 造成月份標籤與欄位錯位
+- `[DOCS]` **個人記錄**打卡密度段落與本 Changelog
+
+### [2026-03-21] v0.10.30 — 打卡密度跑版、今年至今、本週邊框
+
+- `[FIX]` `ProfileChartsSection`：本月 **表頭與格子同寬**（移除格子單獨 `max-w`）；至今熱力區 **`min-w-0` + padding**；本週「今日」改 **ring-inset** 並避免 flex 擠壓（`shrink-0`）
+- `[FEAT]` `fetchUserProfileCharts`（`period === "all"`）：圖表／熱力／SDG 區間改為 **今年 1/1～今日**（`getYearStartString`）；`ProfileAnalyticsShell` 補充與榜單「至今」差異說明
+- `[DOCS]` **個人記錄**：打卡密度版面約束、至今＝今年至今；本 Changelog
+
+### [2026-03-21] v0.10.29 — 個人打卡密度 UI 與文件
+
+- `[FEAT]` `ProfileChartsSection`：本週改為 **七日卡**（僅 **N 項**）；本月為 **月曆格**（格內顯示項數）；至今為 **GitHub 式小格**＋**頂列月份標籤**（格內不顯示項數）；共用色階圖例
+- `[DOCS]` `INSTRUCTIONS.md`：路由／認證／**個人記錄**與 `/profile` 圖表規格與實作對齊；移除已不存在的「每日分數趨勢（折線）」描述
+
+### [2026-03-21] v0.10.28 — 排行榜章節狀態標示對齊實作
+
+- `[DOCS]` 「排行榜設計」：群組內／群組 vs 群組改為 `[done]`；個人記錄改為 `[部分完成]`（streak 專區仍 `[planned]`）；補充狀態標示說明段落
+
+### [2026-03-21] v0.10.27 — 排行榜／個人圖表與分析 RPC
+
+- `[DB]` migration `20260321220000`：`rpc_global_sdg_distribution`、`rpc_global_hot_actions`、`rpc_my_sdg_distribution`（SECURITY DEFINER）
+- `[FEAT]` `lib/supabase/leaderboardAnalytics`、`leaderboardPeriod`；`fetchGroupPeriodStats`；`fetchUserDailyStatsInRange`；`LeaderboardViz`；`ProfileChartsSection`；`useGlobalLeaderboardCharts`、`useGroupPeriodStats`
+- `[FEAT]` 全體：統計四格、每日完成柱狀、SDG 分布、熱門行動；群組內／各群間補齊統計與橫條圖
+- `[DOCS]` 「排行榜設計」、UI/UX Layout、`lib/supabase` 說明與本 Changelog
 
 ### [2026-03-21] v0.10.26 — 排行榜四視角（全體／群組內／各群間／個人）
 

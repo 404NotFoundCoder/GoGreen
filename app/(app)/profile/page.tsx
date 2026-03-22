@@ -1,4 +1,4 @@
-import { ProfileDailyStats } from "@/components/profile/ProfileDailyStats";
+import { ProfileAnalyticsShell } from "@/components/profile/ProfileAnalyticsShell";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 
 export default function ProfilePage() {
@@ -9,7 +9,7 @@ export default function ProfilePage() {
       </header>
       <div className="space-y-6">
         <ProfileForm />
-        <ProfileDailyStats />
+        <ProfileAnalyticsShell />
       </div>
     </>
   );

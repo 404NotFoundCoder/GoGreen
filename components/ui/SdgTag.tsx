@@ -2,11 +2,14 @@ import { getSdgById } from "@/constants/sdg";
 
 type Props = {
   id: number;
-  /** `false`：僅「SDG N」；`true`：顯示「SDG N」與中文標籤 */
+  /**
+   * `true`（預設）：與「今日」清單一致，**SDG N** ＋ **`constants/sdg` 簡短中文**。
+   * `false`：僅 **SDG N**（極少數緊湊版面用）。
+   */
   showLabel?: boolean;
 };
 
-export function SdgTag({ id, showLabel = false }: Props) {
+export function SdgTag({ id, showLabel = true }: Props) {
   const s = getSdgById(id);
   if (!s) return null;
   return (

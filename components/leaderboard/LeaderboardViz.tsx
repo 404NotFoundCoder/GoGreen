@@ -4,6 +4,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { RankMark } from "@/components/leaderboard/RankMark";
+import { SdgTag } from "@/components/ui/SdgTag";
 import { TIMEZONE } from "@/constants/config";
 import { SDG_COLORS } from "@/constants/sdg";
 import type { DailyCompletionPoint } from "@/lib/supabase/leaderboardAnalytics";
@@ -300,26 +301,15 @@ export function SdgDistributionBars({
     <ul className="space-y-2.5">
       {rows.map((r) => {
         const meta = SDG_COLORS[r.sdgId];
-        const goalLabel = meta?.label ?? "—";
         const pct = Math.round((r.count / denom) * 1000) / 10;
         const barPct = Math.min(100, (r.count / denom) * 100);
         const accent = meta?.text ?? "var(--color-primary-dark)";
         return (
           <li key={r.sdgId}>
             <div className="mb-0.5 flex justify-between gap-2 text-xs">
-              <span
-                className="inline-flex max-w-[78%] items-center gap-1 truncate rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{
-                  backgroundColor: meta?.bg ?? "var(--color-primary-pale)",
-                  color: accent,
-                }}
-                title={`SDG ${r.sdgId} ${goalLabel}`}
-              >
-                <span className="shrink-0 tabular-nums">SDG {r.sdgId}</span>
-                <span className="min-w-0 truncate font-medium opacity-95">
-                  {goalLabel}
-                </span>
-              </span>
+              <div className="min-w-0 max-w-[78%] shrink">
+                <SdgTag id={r.sdgId} showLabel />
+              </div>
               <span className="shrink-0 tabular-nums font-semibold text-[var(--color-ink)]">
                 {pct}%
                 <span className="ml-1 font-normal text-[var(--color-ink-secondary)]">

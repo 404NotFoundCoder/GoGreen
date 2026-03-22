@@ -1,19 +1,27 @@
 "use client";
 
+import { GroupPeerDayPanel } from "@/components/groups/GroupPeerDayPanel";
+import { ProfileBinaryDensityHeatmap } from "@/components/profile/ProfileRecordsSection";
 import { ImageLightbox } from "@/components/ui/ImageLightbox";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
+import { SdgTagStrip } from "@/components/ui/SdgTagStrip";
+import { useGroupActionCompletionStats } from "@/hooks/useGroupActionCompletionStats";
+import { createClient } from "@/lib/supabase/client";
+import { fetchGroupMemberIds } from "@/lib/supabase/leaderboard";
+import {
+  fetchGroupCustomTitleCellParticipants,
+  fetchGroupCustomTitleDayDensityMapForRange,
+  fetchGroupCustomTitlePhotoDatesSetForRange,
+  fetchGroupPhotoDatesSetForRange,
+  fetchGroupTemplateItemCellParticipants,
+  fetchGroupTemplateItemDayDensityMapForRange,
+  fetchGroupTemplateItemPhotoDatesSetForRange,
+} from "@/lib/supabase/groupRecords";
 import {
   customRatePct,
-  fetchCustomTitleCellParticipants,
-  fetchCustomTitleDayDensityMapForRange,
-  fetchCustomTitlePhotoDatesSetForRange,
-  fetchTemplateItemCellParticipants,
-  fetchTemplateItemDayDensityMapForRange,
-  fetchTemplateItemPhotoDatesSetForRange,
   templateRatePct,
   type CellParticipant,
-  type CustomTitleStatRow,
-  type TemplateItemStatRow,
 } from "@/lib/supabase/leaderboardActionHeatmap";
 import type { ActionCompletionPeriod } from "@/lib/utils/leaderboard";
 import {
@@ -23,20 +31,20 @@ import {
 import {
   resolveHeatmapLayoutForActionCompletion,
   resolveHeatmapLayoutForDateRange,
-  type HeatmapLayout,
 } from "@/lib/utils/heatmapLayout";
 import { eachDateStringInRange, getTodayString } from "@/lib/utils/date";
-import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
-import { SdgTagStrip } from "@/components/ui/SdgTagStrip";
-import { Calendar, Camera, ChevronDown, X } from "lucide-react";
-import { getISODay, parseISO } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
-import { TIMEZONE } from "@/constants/config";
-import { useGlobalActionCompletionStats } from "@/hooks/useGlobalActionCompletionStats";
+import {
+  Calendar,
+  Camera,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  X,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -51,24 +59,6 @@ const ACTION_COMPLETION_PERIODS: {
   { id: "month", label: "本月" },
 ];
 
-const HEAT_BG = [
-  "bg-[var(--color-muted)]/25",
-  "bg-[var(--color-primary-strong)]/22",
-  "bg-[var(--color-primary-strong)]/40",
-  "bg-[var(--color-primary-strong)]/58",
-  "bg-[var(--color-primary-strong)]",
-] as const;
-
-function densityLevel(n: number, max: number): number {
-  if (n <= 0) return 0;
-  if (max <= 0) return 1;
-  const r = n / max;
-  if (r >= 0.85) return 4;
-  if (r >= 0.55) return 3;
-  if (r >= 0.25) return 2;
-  return 1;
-}
-
 type RowKey =
   | { kind: "template"; itemId: string }
   | { kind: "custom"; title: string };
@@ -79,273 +69,23 @@ function keyString(k: RowKey): string {
   return k.kind === "template" ? `t:${k.itemId}` : `c:${k.title}`;
 }
 
-function ActionDensityHeatmap({
-  layout,
-  byDate,
-  todayStr,
-  onCellClick,
-  photoMarkDates,
-}: {
-  layout: HeatmapLayout;
-  byDate: Map<string, number>;
-  todayStr: string;
-  onCellClick: (date: string) => void;
-  /** 自訂行動：該日有佐證圖之日期（顯示角標） */
-  photoMarkDates?: Set<string>;
-}) {
-  const max = useMemo(() => {
-    let m = 0;
-    for (const v of byDate.values()) if (v > m) m = v;
-    return m > 0 ? m : 1;
-  }, [byDate]);
+type MemberStatRow = {
+  user_id: string;
+  date: string;
+  completed_count: number | null;
+  total_items: number | null;
+  raw_score: number | null;
+  streak: number | null;
+};
 
-  /** 自訂長區間 GitHub 欄：偏好略小於舊版 12px；桌機寬度不足時縮格免橫向捲動，手機固定偏好尺寸可捲動 */
-  const githubWrapRef = useRef<HTMLDivElement>(null);
-  const [githubCellPx, setGithubCellPx] = useState(10);
-  const isGithubLayout =
-    layout.kind !== "week_cards" && layout.kind !== "month";
-  const githubN = layout.kind === "github" ? layout.weekCols.length : 0;
+type MemberProfileMini = {
+  nickname: string;
+  photoUrl: string | null;
+};
 
-  useLayoutEffect(() => {
-    if (!isGithubLayout || githubN === 0) return;
-    const el = githubWrapRef.current;
-    if (!el) return;
-    const PREFERRED = 10;
-    const MIN = 7;
-    const SIDEBAR = 20;
-    const GAP = 1;
-
-    const apply = () => {
-      const node = githubWrapRef.current;
-      if (!node) return;
-      const desktop = window.matchMedia("(min-width: 768px)").matches;
-      const avail = node.clientWidth;
-      if (avail < 24) return;
-      if (!desktop) {
-        setGithubCellPx(PREFERRED);
-        return;
-      }
-      const natural = SIDEBAR + githubN * PREFERRED + githubN * GAP;
-      if (natural <= avail) {
-        setGithubCellPx(PREFERRED);
-        return;
-      }
-      const raw = (avail - SIDEBAR - githubN * GAP) / githubN;
-      const next = Math.max(MIN, Math.min(PREFERRED, Math.floor(raw)));
-      setGithubCellPx(Number.isFinite(next) && next > 0 ? next : PREFERRED);
-    };
-
-    const run = () => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(apply);
-      });
-    };
-    run();
-    const ro = new ResizeObserver(run);
-    ro.observe(el);
-    const mq = window.matchMedia("(min-width: 768px)");
-    mq.addEventListener("change", run);
-    return () => {
-      ro.disconnect();
-      mq.removeEventListener("change", run);
-    };
-  }, [isGithubLayout, githubN]);
-
-  const cell = (date: string | null) => {
-    if (!date) {
-      return (
-        <div
-          className="aspect-square min-h-0 w-full min-w-0 rounded-[2px] bg-transparent"
-          aria-hidden
-        />
-      );
-    }
-    const future = date > todayStr;
-    const n = future ? 0 : (byDate.get(date) ?? 0);
-    const lv = densityLevel(n, max);
-    const bg = HEAT_BG[lv] ?? HEAT_BG[0];
-    const md = formatInTimeZone(parseISO(`${date}T12:00:00`), TIMEZONE, "M/d");
-    const hasPhoto = photoMarkDates?.has(date) && !future && n > 0;
-    const titleHint = hasPhoto ? "含佐證圖 · " : "";
-    return (
-      <button
-        type="button"
-        disabled={future || n <= 0}
-        title={
-          future
-            ? `${md} · 尚未到達`
-            : `${md} · ${titleHint}${n} 人次${n > 0 ? "（點擊看名單）" : ""}`
-        }
-        onClick={() => {
-          if (!future && n > 0) onCellClick(date);
-        }}
-        className={[
-          "relative aspect-square w-full min-h-0 min-w-0 rounded-[2px] border border-[var(--color-muted)]/20 transition",
-          bg,
-          future || n <= 0
-            ? "cursor-default opacity-50"
-            : "cursor-pointer hover:ring-2 hover:ring-[var(--color-primary)]/40",
-        ].join(" ")}
-      >
-        {hasPhoto ? (
-          <Camera
-            className="pointer-events-none absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--color-ink)] drop-shadow-[0_0_3px_rgba(255,255,255,0.95)]"
-            strokeWidth={2.75}
-            aria-hidden
-          />
-        ) : null}
-      </button>
-    );
-  };
-
-  if (layout.kind === "week_cards") {
-    return (
-      <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-        {layout.days.map((d) => (
-          <div
-            key={d}
-            className="flex w-10 shrink-0 flex-col items-center gap-1"
-          >
-            <span className="text-[9px] text-[var(--color-subtle)]">
-              {
-                ["一", "二", "三", "四", "五", "六", "日"][
-                  getISODay(parseISO(`${d}T12:00:00`)) - 1
-                ]
-              }
-            </span>
-            <div className="w-full">{cell(d)}</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (layout.kind === "month") {
-    const mc = 34;
-    return (
-      <div className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5">
-        <div className="mx-auto w-max">
-          <div
-            className="mb-1 grid gap-px text-center text-[9px] text-[var(--color-subtle)]"
-            style={{ gridTemplateColumns: `repeat(7, ${mc}px)` }}
-          >
-            {["一", "二", "三", "四", "五", "六", "日"].map((x) => (
-              <span key={x}>{x}</span>
-            ))}
-          </div>
-          <div
-            className="grid gap-px"
-            style={{ gridTemplateColumns: `repeat(7, ${mc}px)` }}
-          >
-            {layout.cells.map((d, i) => (
-              <div key={d ?? `e-${i}`} className="min-w-0">
-                {d ? (
-                  <div
-                    className="shrink-0 [&>button]:h-full [&>button]:w-full [&>button]:min-h-0 [&>button]:min-w-0 [&>button]:rounded-[2px] [&>button]:p-0"
-                    style={{ width: mc, height: mc }}
-                  >
-                    {cell(d)}
-                  </div>
-                ) : (
-                  <div
-                    className="shrink-0 rounded-[2px] bg-transparent"
-                    style={{ width: mc, height: mc }}
-                    aria-hidden
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const { weekCols, monthLabels } = layout;
-  const n = weekCols.length;
-  const ghPx =
-    Number.isFinite(githubCellPx) && githubCellPx > 0
-      ? Math.min(14, Math.max(5, githubCellPx))
-      : 10;
-  const weekdayRows = ["一", "", "三", "", "五", "", "日"] as const;
-  const templateCols =
-    n === 0 ? "1.25rem" : (`1.25rem repeat(${n}, ${ghPx}px)` as const);
-  const ghGridWidth =
-    n > 0 ? `calc(1.25rem + ${n} * ${ghPx}px + ${n}px)` : undefined;
-
-  const bodyCells = Array.from({ length: 7 }, (_, dayIdx) => {
-    const left = (
-      <div
-        key={`w-${dayIdx}`}
-        className="flex min-h-0 items-center justify-end py-0.5 pr-1 text-[9px] text-[var(--color-subtle)]"
-        style={{ gridColumn: 1, gridRow: dayIdx + 2 }}
-      >
-        {weekdayRows[dayIdx]}
-      </div>
-    );
-    const cells = weekCols.map((col, wi) => {
-      const date = col[dayIdx] ?? null;
-      return (
-        <div
-          key={`c-${wi}-${dayIdx}`}
-          className="flex min-h-0 min-w-0 items-center justify-center"
-          style={{ gridColumn: wi + 2, gridRow: dayIdx + 2 }}
-        >
-          {date ? (
-            <div
-              className="shrink-0 [&>button]:h-full [&>button]:w-full [&>button]:min-h-0 [&>button]:min-w-0 [&>button]:rounded-[2px] [&>button]:p-0"
-              style={{ width: ghPx, height: ghPx }}
-            >
-              {cell(date)}
-            </div>
-          ) : (
-            <div
-              className="shrink-0 rounded-[2px] border border-[var(--color-muted)]/15 bg-[var(--color-muted)]/10"
-              style={{ width: ghPx, height: ghPx }}
-              aria-hidden
-            />
-          )}
-        </div>
-      );
-    });
-    return [left, ...cells];
-  }).flat();
-
-  return (
-    <div
-      ref={githubWrapRef}
-      className="mt-2 w-full min-w-0 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch] touch-pan-x"
-    >
-      <div
-        className="grid w-max gap-px pb-1"
-        style={{
-          gridTemplateColumns: templateCols,
-          gridTemplateRows: `auto repeat(7, ${ghPx}px)`,
-          ...(ghGridWidth ? { width: ghGridWidth } : {}),
-        }}
-      >
-        <div style={{ gridColumn: 1, gridRow: 1 }} aria-hidden />
-        {monthLabels.map((lab, wi) => (
-          <div
-            key={`m-${wi}`}
-            className="relative min-h-[18px] min-w-0"
-            style={{ gridColumn: wi + 2, gridRow: 1 }}
-          >
-            {lab ? (
-              <span className="absolute bottom-0 left-0 z-10 whitespace-nowrap text-[8px] leading-none text-[var(--color-subtle)]">
-                {lab}
-              </span>
-            ) : null}
-          </div>
-        ))}
-        {bodyCells}
-      </div>
-    </div>
-  );
-}
-
-export function GlobalActionCompletionSection() {
+export function GroupRecordsSection({ groupId }: { groupId: string }) {
   const todayStr = getTodayString();
+  const [mainTab, setMainTab] = useState<"completion" | "weekly">("completion");
   const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
   const [actionPeriod, setActionPeriod] =
     useState<ActionCompletionPeriod>("week");
@@ -388,12 +128,12 @@ export function GlobalActionCompletionSection() {
   }, [rangeMode, actionPeriod, chartStart, chartEnd]);
 
   const { templateRows, customRows, loadingList, listError } =
-    useGlobalActionCompletionStats(effectiveBounds);
+    useGroupActionCompletionStats(groupId, effectiveBounds);
 
   const [expanded, setExpanded] = useState<RowKey | null>(null);
   useEffect(() => {
     setExpanded(null);
-  }, [chartStart, chartEnd]);
+  }, [chartStart, chartEnd, groupId]);
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
   const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
     () => new Set(),
@@ -411,6 +151,88 @@ export function GlobalActionCompletionSection() {
   } | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [photoTab, setPhotoTab] = useState<"list" | "gallery">("list");
+
+  const [weeklyByDate, setWeeklyByDate] = useState<Map<string, MemberStatRow[]>>(
+    () => new Map(),
+  );
+  const [weeklyDates, setWeeklyDates] = useState<string[]>([]);
+  const [weeklyProfiles, setWeeklyProfiles] = useState<
+    Map<string, MemberProfileMini>
+  >(() => new Map());
+  const [photoDates, setPhotoDates] = useState<Set<string>>(() => new Set());
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyError, setWeeklyError] = useState<string | null>(null);
+  const [dayDialog, setDayDialog] = useState<string | null>(null);
+
+  const refetchWeekly = useCallback(async () => {
+    setWeeklyLoading(true);
+    setWeeklyError(null);
+    try {
+      const memberIds = await fetchGroupMemberIds(groupId);
+      if (memberIds.length === 0) {
+        setWeeklyByDate(new Map());
+        setWeeklyDates([]);
+        setWeeklyProfiles(new Map());
+        setPhotoDates(new Set());
+        return;
+      }
+      const supabase = createClient();
+      const [{ data: statsRows, error: statsErr }, { data: profs }] =
+        await Promise.all([
+          supabase
+            .from("user_daily_stats")
+            .select(
+              "user_id, date, completed_count, total_items, raw_score, streak",
+            )
+            .in("user_id", memberIds)
+            .gte("date", chartStart)
+            .lte("date", chartEnd)
+            .gt("completed_count", 0)
+            .order("date", { ascending: true }),
+          supabase
+            .from("users")
+            .select("id, nickname, photo_url")
+            .in("id", memberIds),
+        ]);
+      if (statsErr) throw statsErr;
+      const nick = new Map<string, MemberProfileMini>();
+      for (const p of profs ?? []) {
+        const id = p.id as string;
+        const raw = p.photo_url as string | null | undefined;
+        nick.set(id, {
+          nickname: (p.nickname as string) ?? "—",
+          photoUrl:
+            typeof raw === "string" && raw.trim().length > 0
+              ? raw.trim()
+              : null,
+        });
+      }
+      const byDate = new Map<string, MemberStatRow[]>();
+      for (const r of (statsRows ?? []) as MemberStatRow[]) {
+        const d = r.date;
+        if (!byDate.has(d)) byDate.set(d, []);
+        byDate.get(d)!.push(r);
+      }
+      const dates = [...byDate.keys()].sort((a, b) => b.localeCompare(a));
+      setWeeklyByDate(byDate);
+      setWeeklyDates(dates);
+      setWeeklyProfiles(nick);
+      const photos = await fetchGroupPhotoDatesSetForRange(
+        groupId,
+        chartStart,
+        chartEnd,
+      );
+      setPhotoDates(photos);
+    } catch (e) {
+      setWeeklyError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWeeklyLoading(false);
+    }
+  }, [groupId, chartStart, chartEnd]);
+
+  useEffect(() => {
+    void refetchWeekly();
+  }, [refetchWeekly]);
 
   useEffect(() => {
     if (!rangePanelOpen) return;
@@ -442,13 +264,15 @@ export function GlobalActionCompletionSection() {
       try {
         const { start, end } = effectiveBounds;
         if (expanded.kind === "template") {
-          const [m, photoSet] = await Promise.all([
-            fetchTemplateItemDayDensityMapForRange(
+          const [m, photos] = await Promise.all([
+            fetchGroupTemplateItemDayDensityMapForRange(
+              groupId,
               start,
               end,
               expanded.itemId,
             ),
-            fetchTemplateItemPhotoDatesSetForRange(
+            fetchGroupTemplateItemPhotoDatesSetForRange(
+              groupId,
               start,
               end,
               expanded.itemId,
@@ -456,12 +280,18 @@ export function GlobalActionCompletionSection() {
           ]);
           if (!cancelled) {
             setDensityMap(m);
-            setPhotoMarkDates(photoSet);
+            setPhotoMarkDates(photos);
           }
         } else {
-          const [m, photoSet] = await Promise.all([
-            fetchCustomTitleDayDensityMapForRange(start, end, expanded.title),
-            fetchCustomTitlePhotoDatesSetForRange(
+          const [m, photos] = await Promise.all([
+            fetchGroupCustomTitleDayDensityMapForRange(
+              groupId,
+              start,
+              end,
+              expanded.title,
+            ),
+            fetchGroupCustomTitlePhotoDatesSetForRange(
+              groupId,
               start,
               end,
               expanded.title,
@@ -469,7 +299,7 @@ export function GlobalActionCompletionSection() {
           ]);
           if (!cancelled) {
             setDensityMap(m);
-            setPhotoMarkDates(photoSet);
+            setPhotoMarkDates(photos);
           }
         }
       } catch {
@@ -484,21 +314,32 @@ export function GlobalActionCompletionSection() {
     return () => {
       cancelled = true;
     };
-  }, [expanded, effectiveBounds]);
+  }, [expanded, effectiveBounds, groupId]);
 
-  const openCell = useCallback(async (date: string, key: RowKey) => {
-    setModal({ date, key, participants: [], loading: true });
-    setPhotoTab("list");
-    try {
-      const rows =
-        key.kind === "template"
-          ? await fetchTemplateItemCellParticipants(date, key.itemId)
-          : await fetchCustomTitleCellParticipants(date, key.title);
-      setModal({ date, key, participants: rows, loading: false });
-    } catch {
-      setModal({ date, key, participants: [], loading: false });
-    }
-  }, []);
+  const openCell = useCallback(
+    async (date: string, key: RowKey) => {
+      setModal({ date, key, participants: [], loading: true });
+      setPhotoTab("list");
+      try {
+        const rows =
+          key.kind === "template"
+            ? await fetchGroupTemplateItemCellParticipants(
+                groupId,
+                date,
+                key.itemId,
+              )
+            : await fetchGroupCustomTitleCellParticipants(
+                groupId,
+                date,
+                key.title,
+              );
+        setModal({ date, key, participants: rows, loading: false });
+      } catch {
+        setModal({ date, key, participants: [], loading: false });
+      }
+    },
+    [groupId],
+  );
 
   const rankedTemplate = useMemo(() => {
     const sorted = [...templateRows].sort((a, b) => {
@@ -511,22 +352,25 @@ export function GlobalActionCompletionSection() {
   }, [templateRows]);
 
   const rankedCustom = useMemo(() => {
-    return [...customRows].sort((a, b) => customRatePct(b) - customRatePct(a));
+    return [...customRows].sort(
+      (a, b) => customRatePct(b) - customRatePct(a),
+    );
   }, [customRows]);
 
   const rowPhotoSig = useMemo(
     () =>
       JSON.stringify({
+        g: groupId,
         s: chartStart,
         e: chartEnd,
         t: templateRows.map((r) => r.itemId),
         c: customRows.map((r) => r.title),
       }),
-    [chartStart, chartEnd, templateRows, customRows],
+    [groupId, chartStart, chartEnd, templateRows, customRows],
   );
 
   useEffect(() => {
-    if (loadingList) return;
+    if (mainTab !== "completion" || loadingList) return;
     let cancelled = false;
     const { start, end } = effectiveBounds;
     void (async () => {
@@ -535,7 +379,8 @@ export function GlobalActionCompletionSection() {
         ...templateRows.map(async (r) => {
           const k = `t:${r.itemId}`;
           try {
-            const s = await fetchTemplateItemPhotoDatesSetForRange(
+            const s = await fetchGroupTemplateItemPhotoDatesSetForRange(
+              groupId,
               start,
               end,
               r.itemId,
@@ -548,7 +393,8 @@ export function GlobalActionCompletionSection() {
         ...customRows.map(async (r) => {
           const k = `c:${r.title}`;
           try {
-            const s = await fetchCustomTitlePhotoDatesSetForRange(
+            const s = await fetchGroupCustomTitlePhotoDatesSetForRange(
+              groupId,
               start,
               end,
               r.title,
@@ -564,7 +410,15 @@ export function GlobalActionCompletionSection() {
     return () => {
       cancelled = true;
     };
-  }, [loadingList, effectiveBounds, rowPhotoSig, templateRows, customRows]);
+  }, [
+    mainTab,
+    loadingList,
+    effectiveBounds,
+    rowPhotoSig,
+    groupId,
+    templateRows,
+    customRows,
+  ]);
 
   function applyPickerRange(): boolean {
     let s = pickerStart;
@@ -666,14 +520,14 @@ export function GlobalActionCompletionSection() {
         </p>
         <SdgTagStrip ids={sdgIds} />
         {open ? (
-          <div className="border-t border-[var(--color-muted)]/40 px-2 pb-3 pt-2">
+          <div className="border-t border-[var(--color-muted)]/40 overflow-x-auto overflow-y-visible overscroll-x-contain px-2 pb-3 pt-2">
             <p className="mb-1 text-[10px] leading-snug text-[var(--color-subtle)]">
-              與卡片上方所選「{pl}」區間一致；色越深表示該日完成人次越高。該日至少一筆打卡含佐證圖時，格內右下角顯示相機圖示。
+              與上方所選「{pl}」區間一致；格內為本群任一成員當日有打卡即綠底（人次）；該日有佐證圖時右下角顯示相機；點格可看本群完成者。
             </p>
             {densityLoading ? (
               <Skeleton className="h-32 w-full rounded-lg" />
             ) : (
-              <ActionDensityHeatmap
+              <ProfileBinaryDensityHeatmap
                 layout={layout}
                 byDate={densityMap}
                 todayStr={todayStr}
@@ -696,26 +550,69 @@ export function GlobalActionCompletionSection() {
       ? Math.max(...rankedCustom.map(customRatePct), 1)
       : 1;
 
-  if (loadingList) {
-    return <Skeleton className="h-48 w-full rounded-2xl" />;
-  }
-  if (listError) {
-    return (
-      <p className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
-        行動完成率載入失敗：{listError}（請套用 migration
-        `20260322123000_leaderboard_action_density_rpcs.sql`、
-        `20260322141000_custom_title_stats_list_days.sql`、
-        `20260322142000_custom_title_stats_include_list_only.sql`、
-        `20260322150000_action_completion_sdg_ids.sql`）
-      </p>
-    );
-  }
+  const dayNavDates = useMemo(
+    () => eachDateStringInRange(chartStart, chartEnd),
+    [chartStart, chartEnd],
+  );
+
+  const dayNavIdx = dayDialog != null ? dayNavDates.indexOf(dayDialog) : -1;
+  const canDayPrev = dayNavIdx > 0;
+  const canDayNext = dayNavIdx >= 0 && dayNavIdx < dayNavDates.length - 1;
+
+  const membersForDialog = useMemo(() => {
+    if (!dayDialog) return [];
+    const rows = weeklyByDate.get(dayDialog) ?? [];
+    return [...rows].sort((a, b) => {
+      const na = weeklyProfiles.get(a.user_id)?.nickname ?? "";
+      const nb = weeklyProfiles.get(b.user_id)?.nickname ?? "";
+      return na.localeCompare(nb, "zh-Hant");
+    });
+  }, [dayDialog, weeklyByDate, weeklyProfiles]);
 
   return (
-    <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+    <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+      <div className="mb-3 flex w-full flex-wrap items-center justify-center gap-2">
+        <div
+          className="inline-flex rounded-full border border-[var(--color-muted)]/60 bg-[var(--color-white)]/80 p-0.5 shadow-sm"
+          role="tablist"
+          aria-label="群組紀錄分頁"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mainTab === "completion"}
+            onClick={() => setMainTab("completion")}
+            className={[
+              "rounded-full px-3 py-1.5 text-xs font-medium transition",
+              mainTab === "completion"
+                ? "bg-[var(--color-primary-strong)] text-[var(--color-white)] shadow-sm"
+                : "text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)]/50",
+            ].join(" ")}
+          >
+            各項完成率
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mainTab === "weekly"}
+            onClick={() => setMainTab("weekly")}
+            className={[
+              "rounded-full px-3 py-1.5 text-xs font-medium transition",
+              mainTab === "weekly"
+                ? "bg-[var(--color-primary-strong)] text-[var(--color-white)] shadow-sm"
+                : "text-[var(--color-ink-secondary)] hover:bg-[var(--color-primary-light)]/50",
+            ].join(" ")}
+          >
+            每週紀錄
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-          各項完成率（點開看密度圖）
+          {mainTab === "completion"
+            ? "各項完成率（本群，點開看密度圖）"
+            : "每週紀錄（本群，唯讀）"}
         </h3>
         <div
           ref={periodBarRef}
@@ -725,7 +622,7 @@ export function GlobalActionCompletionSection() {
             <div
               className="grid w-full max-w-none grid-cols-4 gap-1 rounded-full border border-[var(--color-muted)]/60 bg-[var(--color-white)]/70 p-1 shadow-sm sm:w-[17.5rem]"
               role="group"
-              aria-label="各項完成率統計區間"
+              aria-label="紀錄統計區間"
             >
               {ACTION_COMPLETION_PERIODS.map((p) => (
                 <button
@@ -818,53 +715,271 @@ export function GlobalActionCompletionSection() {
           ) : null}
         </div>
       </div>
-      <p className="mt-2 text-xs text-[var(--color-subtle)]">
-        （{chartStart === chartEnd ? chartStart : `${chartStart}～${chartEnd}`}
-        ）。公版：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）×
-        100%。自訂：完成率＝打卡次數 ÷ 列入今日清單人日數（依標題彙總）× 100%。
-      </p>
-      <div className="mt-3 space-y-2">
-        <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-          公版項目
-        </p>
-        {rankedTemplate.length === 0 ? (
-          <p className="text-sm text-[var(--color-subtle)]">
-            尚無公版項目資料。
-          </p>
-        ) : (
-          rankedTemplate.map((r, i) =>
-            renderRow(
-              i + 1,
-              r.title,
-              templateRatePct(r),
-              `${r.checkinCount} 次打卡 · ${r.achieverCount} 人曾完成`,
-              `分母＝${r.periodDays} 天 × ${r.activeUsers} 人（期間內曾打卡者）`,
-              { kind: "template", itemId: r.itemId },
-              maxTemplateRate,
-              r.sdgIds ?? [],
-            ),
-          )
-        )}
-      </div>
-      {rankedCustom.length > 0 ? (
-        <div className="mt-4 space-y-2">
-          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-            自訂行動（依標題彙總）
-          </p>
-          {rankedCustom.map((r, i) =>
-            renderRow(
-              rankedTemplate.length + i + 1,
-              r.title,
-              customRatePct(r),
-              `${r.checkinCount} 次打卡 · ${r.achieverCount} 人曾完成`,
-              r.legacyListDenominator
-                ? `分母估算＝${r.onListDays}（區間天數×曾打卡人數；資料庫請套用 migration \`20260322141000_custom_title_stats_list_days.sql\` 改為「列入今日清單」人日）。完成 ${r.checkinCount} 次。`
-                : `分母＝列入今日清單 ${r.onListDays} 人日；完成 ${r.checkinCount} 次。`,
-              { kind: "custom", title: r.title },
-              maxCustomRate,
-              r.sdgIds ?? [],
-            ),
+
+      {mainTab === "completion" ? (
+        <>
+          {loadingList ? (
+            <Skeleton className="mt-3 h-48 w-full rounded-xl" />
+          ) : listError ? (
+            <p className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
+              群組行動完成率載入失敗：{listError}（請套用 migration
+              `20260322310000_group_records_rpcs.sql`）
+            </p>
+          ) : (
+            <>
+              <p className="mt-2 text-xs text-[var(--color-subtle)]">
+                （
+                {chartStart === chartEnd
+                  ? chartStart
+                  : `${chartStart}～${chartEnd}`}
+                ）。公版：完成率＝本群該項打卡總次數 ÷（區間天數 ×
+                本群活躍人數）× 100%。自訂：完成率＝本群打卡次數 ÷
+                本群列入清單人日數 × 100%。
+              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                  公版項目
+                </p>
+                {rankedTemplate.length === 0 ? (
+                  <p className="text-sm text-[var(--color-subtle)]">
+                    尚無公版項目資料。
+                  </p>
+                ) : (
+                  rankedTemplate.map((r, i) =>
+                    renderRow(
+                      i + 1,
+                      r.title,
+                      templateRatePct(r),
+                      `${r.checkinCount} 次打卡（本群）`,
+                      `分母＝區間 ${r.periodDays} 天 × 本群活躍 ${r.activeUsers} 人`,
+                      { kind: "template", itemId: r.itemId },
+                      maxTemplateRate,
+                      r.sdgIds ?? [],
+                    ),
+                  )
+                )}
+              </div>
+              {rankedCustom.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+                    自訂行動（依標題彙總）
+                  </p>
+                  {rankedCustom.map((r, i) =>
+                    renderRow(
+                      rankedTemplate.length + i + 1,
+                      r.title,
+                      customRatePct(r),
+                      `${r.checkinCount} 次打卡（本群）`,
+                      r.legacyListDenominator
+                        ? `分母估算＝${r.onListDays}（請套用 migration 20260322141000）。`
+                        : `分母＝本群列入今日清單 ${r.onListDays} 人日。`,
+                      { kind: "custom", title: r.title },
+                      maxCustomRate,
+                      r.sdgIds ?? [],
+                    ),
+                  )}
+                </div>
+              ) : null}
+            </>
           )}
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-xs text-[var(--color-subtle)]">
+            區間與上方相同：「{pl}」（
+            {chartStart === chartEnd
+              ? chartStart
+              : `${chartStart}～${chartEnd}`}
+            ）。僅列至少一位成員有打卡之日；點列或「檢視」可看該日各成員紀錄（唯讀）；可用標題列左右切換日期。
+          </p>
+          {weeklyLoading ? (
+            <Skeleton className="mt-3 h-48 w-full rounded-xl" />
+          ) : weeklyError ? (
+            <p className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
+              無法載入每週紀錄：{weeklyError}
+            </p>
+          ) : weeklyDates.length === 0 ? (
+            <p className="mt-3 text-sm text-[var(--color-ink-secondary)]">
+              此區間本群尚無成員打卡紀錄。
+            </p>
+          ) : (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[420px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b-[0.5px] border-[var(--color-muted)] text-left text-[var(--color-ink-secondary)]">
+                    <th className="py-2 pr-2 font-medium">日期</th>
+                    <th className="py-2 pr-2 font-medium">打卡人數</th>
+                    <th className="py-2 pr-2 font-medium text-center">照片</th>
+                    <th className="py-2 font-medium text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyDates.map((d) => {
+                    const n = weeklyByDate.get(d)?.length ?? 0;
+                    return (
+                      <tr
+                        key={d}
+                        role="button"
+                        tabIndex={0}
+                        className="cursor-pointer border-b-[0.5px] border-[var(--color-muted)]/60 transition hover:bg-[var(--color-primary-light)]/20"
+                        onClick={() => setDayDialog(d)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setDayDialog(d);
+                          }
+                        }}
+                      >
+                        <td className="py-2 pr-2 tabular-nums font-medium text-[var(--color-ink)]">
+                          {d}
+                        </td>
+                        <td className="py-2 pr-2 tabular-nums text-[var(--color-ink)]">
+                          {n}
+                        </td>
+                        <td className="py-2 pr-2 text-center">
+                          {photoDates.has(d) ? (
+                            <Camera
+                              className="mx-auto h-4 w-4 text-[var(--color-ink-secondary)]"
+                              strokeWidth={2}
+                              aria-label="本群當日有佐證照片"
+                            />
+                          ) : (
+                            <span className="text-[var(--color-subtle)]">
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="py-2 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30"
+                            aria-label="檢視"
+                            onClick={() => setDayDialog(d)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {dayDialog ? (
+        <div
+          className="fixed inset-0 z-[920] flex items-end justify-center bg-[rgba(45,52,40,0.22)] p-2 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="檢視本群該日紀錄"
+        >
+          <div className="flex max-h-[min(92vh,56rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-[var(--color-bg)] shadow-2xl sm:max-w-xl">
+            <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-muted)]/60 bg-[var(--color-surface)] px-2 py-2.5">
+              <button
+                type="button"
+                disabled={!canDayPrev}
+                onClick={() => {
+                  const i = dayNavDates.indexOf(dayDialog);
+                  const prev = dayNavDates[i - 1];
+                  if (prev) setDayDialog(prev);
+                }}
+                className="shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30 disabled:pointer-events-none disabled:opacity-30"
+                aria-label="前一天"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <p className="min-w-0 flex-1 text-center text-sm font-semibold text-[var(--color-ink)]">
+                {dayDialog}
+                <span className="block text-xs font-normal text-[var(--color-ink-secondary)]">
+                  本群成員紀錄（唯讀）
+                </span>
+              </p>
+              <button
+                type="button"
+                disabled={!canDayNext}
+                onClick={() => {
+                  const i = dayNavDates.indexOf(dayDialog);
+                  const next = dayNavDates[i + 1];
+                  if (next) setDayDialog(next);
+                }}
+                className="shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30 disabled:pointer-events-none disabled:opacity-30"
+                aria-label="後一天"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDayDialog(null)}
+                className="shrink-0 rounded-full p-2 text-[var(--color-ink-secondary)] hover:bg-[var(--color-muted)]/30"
+                aria-label="關閉"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
+              {membersForDialog.length === 0 ? (
+                <p className="text-sm text-[var(--color-subtle)]">
+                  此日無成員打卡資料（或已切換至區間內其他日期）。
+                </p>
+              ) : (
+                membersForDialog.map((row) => {
+                  const prof = weeklyProfiles.get(row.user_id);
+                  const nn = prof?.nickname ?? "—";
+                  const av = prof?.photoUrl;
+                  const cc = row.completed_count ?? 0;
+                  const tt = row.total_items ?? 0;
+                  const rs = row.raw_score ?? 0;
+                  return (
+                    <section
+                      key={row.user_id}
+                      className="mb-4 overflow-hidden rounded-xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] last:mb-0"
+                    >
+                      <div className="flex items-center gap-2 border-b border-[var(--color-muted)]/50 bg-[var(--color-white)]/60 px-3 py-2">
+                        {av ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={av}
+                            alt=""
+                            width={36}
+                            height={36}
+                            className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-[var(--color-primary-pale)]"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-sm font-semibold text-[var(--color-primary-dark)]">
+                            {nn.trim().slice(0, 1) || "?"}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-[var(--color-ink)]">
+                            {nn}
+                          </p>
+                          <p className="text-[11px] tabular-nums text-[var(--color-ink-secondary)]">
+                            進度 {cc}/{tt} · 得分 {rs} · 連續{" "}
+                            {row.streak ?? 0} 天
+                          </p>
+                        </div>
+                      </div>
+                      <div className="p-2 sm:p-3">
+                        <GroupPeerDayPanel
+                          groupId={groupId}
+                          peerUserId={row.user_id}
+                          date={dayDialog}
+                        />
+                      </div>
+                    </section>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -873,7 +988,7 @@ export function GlobalActionCompletionSection() {
           className="fixed inset-0 z-[900] flex items-end justify-center bg-black/40 p-3 sm:items-center"
           role="dialog"
           aria-modal="true"
-          aria-label="完成者名單"
+          aria-label="本群完成者"
           onClick={() => setModal(null)}
         >
           <div
@@ -882,7 +997,7 @@ export function GlobalActionCompletionSection() {
           >
             <div className="flex items-center justify-between border-b border-[var(--color-muted)]/60 px-4 py-3">
               <p className="text-sm font-semibold text-[var(--color-ink)]">
-                {modal.date} 完成者
+                {modal.date} · 本群完成者
               </p>
               <button
                 type="button"

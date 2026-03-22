@@ -8,7 +8,9 @@ import {
   customRatePct,
   fetchCustomTitleCellParticipants,
   fetchProfileCustomTitleDayDensityMapForRange,
+  fetchProfileCustomTitlePhotoDatesSetForRange,
   fetchProfileTemplateItemDayDensityMapForRange,
+  fetchProfileTemplateItemPhotoDatesSetForRange,
   fetchTemplateItemCellParticipants,
   templateRatePct,
   type CellParticipant,
@@ -33,8 +35,8 @@ import {
   type HeatmapLayout,
 } from "@/lib/utils/heatmapLayout";
 import { eachDateStringInRange, getTodayString } from "@/lib/utils/date";
-import { SDG_COLORS } from "@/constants/sdg";
 import { DateRangePickerPanel } from "@/components/ui/DateRangePickerPanel";
+import { SdgTagStrip } from "@/components/ui/SdgTagStrip";
 import {
   Calendar,
   Camera,
@@ -80,45 +82,23 @@ type RowKey =
 
 const MAX_CUSTOM_RANGE_DAYS = 366;
 
-function SdgTagStrip({ ids }: { ids: number[] }) {
-  const uniq = [
-    ...new Set(ids.filter((n) => Number.isFinite(n) && n >= 1 && n <= 17)),
-  ].sort((a, b) => a - b);
-  if (uniq.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1.5">
-      {uniq.map((id) => {
-        const c = SDG_COLORS[id];
-        if (!c) return null;
-        return (
-          <span
-            key={id}
-            className="inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
-            style={{ backgroundColor: c.bg, color: c.text }}
-            title={c.label}
-          >
-            SDG {id}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 function keyString(k: RowKey): string {
   return k.kind === "template" ? `t:${k.itemId}` : `c:${k.title}`;
 }
 
-function ProfileBinaryDensityHeatmap({
+export function ProfileBinaryDensityHeatmap({
   layout,
   byDate,
   todayStr,
   onCellClick,
+  photoMarkDates,
 }: {
   layout: HeatmapLayout;
   byDate: Map<string, number>;
   todayStr: string;
   onCellClick: (date: string) => void;
+  /** 該日打卡含佐證圖時顯示角標（與全體榜一致） */
+  photoMarkDates?: Set<string>;
 }) {
   /** 自訂長區間 GitHub 欄：偏好略小於舊版 12px；桌機寬度不足時縮格免橫向捲動，手機固定偏好尺寸可捲動 */
   const githubWrapRef = useRef<HTMLDivElement>(null);
@@ -190,6 +170,8 @@ function ProfileBinaryDensityHeatmap({
       : has
         ? BINARY_YES
         : BINARY_NO;
+    const hasPhoto = Boolean(photoMarkDates?.has(date) && !future && has);
+    const photoHint = hasPhoto ? "含佐證圖 · " : "";
     return (
       <button
         type="button"
@@ -198,7 +180,7 @@ function ProfileBinaryDensityHeatmap({
           future
             ? `${md} · 尚未到達`
             : has
-              ? `${md} · 有打卡（點擊看紀錄）`
+              ? `${md} · ${photoHint}有打卡（點擊看紀錄）`
               : `${md} · 無打卡`
         }
         onClick={() => {
@@ -211,7 +193,15 @@ function ProfileBinaryDensityHeatmap({
             ? "cursor-default"
             : "cursor-pointer hover:ring-2 hover:ring-[var(--color-primary)]/40",
         ].join(" ")}
-      />
+      >
+        {hasPhoto ? (
+          <Camera
+            className="pointer-events-none absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-[var(--color-ink)] drop-shadow-[0_0_3px_rgba(255,255,255,0.95)]"
+            strokeWidth={2.75}
+            aria-hidden
+          />
+        ) : null}
+      </button>
     );
   };
 
@@ -414,7 +404,13 @@ export function ProfileRecordsSection() {
     setExpanded(null);
   }, [chartStart, chartEnd]);
   const [densityMap, setDensityMap] = useState<Map<string, number>>(new Map());
+  const [photoMarkDates, setPhotoMarkDates] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [densityLoading, setDensityLoading] = useState(false);
+  const [rowPhotoFlags, setRowPhotoFlags] = useState<Map<string, boolean>>(
+    () => new Map(),
+  );
 
   const [modal, setModal] = useState<{
     date: string;
@@ -484,6 +480,7 @@ export function ProfileRecordsSection() {
   useEffect(() => {
     if (!expanded) {
       setDensityMap(new Map());
+      setPhotoMarkDates(new Set());
       return;
     }
     let cancelled = false;
@@ -492,22 +489,45 @@ export function ProfileRecordsSection() {
       try {
         const { start, end } = effectiveBounds;
         if (expanded.kind === "template") {
-          const m = await fetchProfileTemplateItemDayDensityMapForRange(
-            start,
-            end,
-            expanded.itemId,
-          );
-          if (!cancelled) setDensityMap(m);
+          const [m, photos] = await Promise.all([
+            fetchProfileTemplateItemDayDensityMapForRange(
+              start,
+              end,
+              expanded.itemId,
+            ),
+            fetchProfileTemplateItemPhotoDatesSetForRange(
+              start,
+              end,
+              expanded.itemId,
+            ).catch(() => new Set<string>()),
+          ]);
+          if (!cancelled) {
+            setDensityMap(m);
+            setPhotoMarkDates(photos);
+          }
         } else {
-          const m = await fetchProfileCustomTitleDayDensityMapForRange(
-            start,
-            end,
-            expanded.title,
-          );
-          if (!cancelled) setDensityMap(m);
+          const [m, photos] = await Promise.all([
+            fetchProfileCustomTitleDayDensityMapForRange(
+              start,
+              end,
+              expanded.title,
+            ),
+            fetchProfileCustomTitlePhotoDatesSetForRange(
+              start,
+              end,
+              expanded.title,
+            ).catch(() => new Set<string>()),
+          ]);
+          if (!cancelled) {
+            setDensityMap(m);
+            setPhotoMarkDates(photos);
+          }
         }
       } catch {
-        if (!cancelled) setDensityMap(new Map());
+        if (!cancelled) {
+          setDensityMap(new Map());
+          setPhotoMarkDates(new Set());
+        }
       } finally {
         if (!cancelled) setDensityLoading(false);
       }
@@ -550,6 +570,58 @@ export function ProfileRecordsSection() {
     return [...customRows].sort((a, b) => customRatePct(b) - customRatePct(a));
   }, [customRows]);
 
+  const rowPhotoSig = useMemo(
+    () =>
+      JSON.stringify({
+        s: chartStart,
+        e: chartEnd,
+        t: templateRows.map((r) => r.itemId),
+        c: customRows.map((r) => r.title),
+      }),
+    [chartStart, chartEnd, templateRows, customRows],
+  );
+
+  useEffect(() => {
+    if (mainTab !== "completion" || loadingList) return;
+    let cancelled = false;
+    const { start, end } = effectiveBounds;
+    void (async () => {
+      const next = new Map<string, boolean>();
+      await Promise.all([
+        ...templateRows.map(async (r) => {
+          const k = `t:${r.itemId}`;
+          try {
+            const s = await fetchProfileTemplateItemPhotoDatesSetForRange(
+              start,
+              end,
+              r.itemId,
+            );
+            if (!cancelled) next.set(k, s.size > 0);
+          } catch {
+            if (!cancelled) next.set(k, false);
+          }
+        }),
+        ...customRows.map(async (r) => {
+          const k = `c:${r.title}`;
+          try {
+            const s = await fetchProfileCustomTitlePhotoDatesSetForRange(
+              start,
+              end,
+              r.title,
+            );
+            if (!cancelled) next.set(k, s.size > 0);
+          } catch {
+            if (!cancelled) next.set(k, false);
+          }
+        }),
+      ]);
+      if (!cancelled) setRowPhotoFlags(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mainTab, loadingList, effectiveBounds, rowPhotoSig, templateRows, customRows]);
+
   function applyPickerRange(): boolean {
     let s = pickerStart;
     let e = pickerEnd;
@@ -589,6 +661,7 @@ export function ProfileRecordsSection() {
     const open = expanded && keyString(expanded) === keyString(rowKey);
     const barPct =
       maxRate > 0 ? Math.min(100, Math.round((ratePct / maxRate) * 100)) : 0;
+    const rowHasPhoto = rowPhotoFlags.get(keyString(rowKey)) === true;
     return (
       <div
         key={keyString(rowKey)}
@@ -616,6 +689,13 @@ export function ProfileRecordsSection() {
           <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--color-primary-dark)]">
             {ratePct.toFixed(1)}%
           </span>
+          {rowHasPhoto ? (
+            <Camera
+              className="h-4 w-4 shrink-0 text-[var(--color-ink-secondary)]"
+              strokeWidth={2}
+              aria-label="此區間有佐證照片"
+            />
+          ) : null}
           <ChevronDown
             className={[
               "h-4 w-4 shrink-0 text-[var(--color-subtle)] transition",
@@ -626,6 +706,16 @@ export function ProfileRecordsSection() {
         </button>
         <p className="px-3 pb-2 text-[11px] leading-snug text-[var(--color-ink-secondary)]">
           {subline}
+          {rowHasPhoto ? (
+            <span className="ml-1 inline-flex items-center gap-0.5 text-[var(--color-subtle)]">
+              <Camera
+                className="inline h-3 w-3"
+                strokeWidth={2}
+                aria-hidden
+              />
+              含佐證
+            </span>
+          ) : null}
         </p>
         <p className="px-3 pb-2 text-[10px] text-[var(--color-subtle)]">
           {denomLine}
@@ -634,7 +724,7 @@ export function ProfileRecordsSection() {
         {open ? (
           <div className="border-t border-[var(--color-muted)]/40 overflow-x-auto overflow-y-visible overscroll-x-contain px-2 pb-3 pt-2">
             <p className="mb-1 text-[10px] leading-snug text-[var(--color-subtle)]">
-              與上方所選「{pl}」區間一致；有打卡為綠底，無打卡為白底。
+              與上方所選「{pl}」區間一致；有打卡為綠底，無打卡為白底。有佐證照片之日在格內右下角顯示相機圖示。
             </p>
             {densityLoading ? (
               <Skeleton className="h-32 w-full rounded-lg" />
@@ -644,6 +734,7 @@ export function ProfileRecordsSection() {
                 byDate={densityMap}
                 todayStr={todayStr}
                 onCellClick={(d) => void openCell(d, rowKey)}
+                photoMarkDates={photoMarkDates}
               />
             )}
           </div>

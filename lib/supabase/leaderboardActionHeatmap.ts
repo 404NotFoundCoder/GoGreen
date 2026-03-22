@@ -119,7 +119,7 @@ export async function fetchCustomTitleStats(
   return fetchCustomTitleStatsForRange(start, end, limit);
 }
 
-function mapCustomTitleStatRow(r: Record<string, unknown>): CustomTitleStatRow {
+export function mapCustomTitleStatRow(r: Record<string, unknown>): CustomTitleStatRow {
   const title = typeof r.title === "string" ? r.title : String(r.title ?? "");
   const checkinCount = safeNonNeg(r.checkin_count);
   const achieverCount = safeNonNeg(r.achiever_count);
@@ -201,6 +201,32 @@ export async function fetchCustomTitleDayDensityMapForRange(
   return m;
 }
 
+function photoDatesRowsToSet(
+  rows: { d: string }[] | null | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows ?? []) {
+    const k = typeof r.d === "string" ? r.d : String(r.d).slice(0, 10);
+    out.add(k);
+  }
+  return out;
+}
+
+/** 公版項目：該日至少一筆打卡含佐證（全體榜密度圖角標） */
+export async function fetchTemplateItemPhotoDatesSetForRange(
+  start: string,
+  end: string,
+  itemId: string,
+): Promise<Set<string>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_leaderboard_template_item_day_photo_dates",
+    { p_start: start, p_end: end, p_item_id: itemId },
+  );
+  if (error) throw error;
+  return photoDatesRowsToSet(data as { d: string }[] | null);
+}
+
 /** 自訂標題：該日至少一筆打卡含 `photo_url`（密度圖角標）；RPC 未套用時請 catch 後用空 Set */
 export async function fetchCustomTitlePhotoDatesSetForRange(
   start: string,
@@ -213,13 +239,37 @@ export async function fetchCustomTitlePhotoDatesSetForRange(
     { p_start: start, p_end: end, p_title: title },
   );
   if (error) throw error;
-  const rows = data as { d: string }[] | null;
-  const out = new Set<string>();
-  for (const r of rows ?? []) {
-    const k = typeof r.d === "string" ? r.d : String(r.d).slice(0, 10);
-    out.add(k);
-  }
-  return out;
+  return photoDatesRowsToSet(data as { d: string }[] | null);
+}
+
+/** 個人頁：公版項目含佐證之日期 */
+export async function fetchProfileTemplateItemPhotoDatesSetForRange(
+  start: string,
+  end: string,
+  itemId: string,
+): Promise<Set<string>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_profile_template_item_day_photo_dates",
+    { p_start: start, p_end: end, p_item_id: itemId },
+  );
+  if (error) throw error;
+  return photoDatesRowsToSet(data as { d: string }[] | null);
+}
+
+/** 個人頁：自訂標題含佐證之日期（僅本人，勿用全體榜 RPC） */
+export async function fetchProfileCustomTitlePhotoDatesSetForRange(
+  start: string,
+  end: string,
+  title: string,
+): Promise<Set<string>> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc(
+    "rpc_profile_custom_title_day_photo_dates",
+    { p_start: start, p_end: end, p_title: title },
+  );
+  if (error) throw error;
+  return photoDatesRowsToSet(data as { d: string }[] | null);
 }
 
 export async function fetchCustomTitleDayDensityMap(

@@ -6,6 +6,7 @@ import {
 } from "@/components/leaderboard/LeaderboardPeriodBar";
 import { RankMark } from "@/components/leaderboard/RankMark";
 import { GlobalActionCompletionSection } from "@/components/leaderboard/GlobalActionCompletionSection";
+import { GroupRecordsSection } from "@/components/groups/GroupRecordsSection";
 import {
   GlobalDailyCompletionBars,
   SdgDistributionBars,
@@ -21,7 +22,7 @@ import { usePersonalLeaderboard } from "@/hooks/usePersonalLeaderboard";
 import { useGroups } from "@/hooks/useGroups";
 import type { PersonalLeaderboardSnapshot } from "@/lib/supabase/leaderboard";
 import type { GlobalLeaderboardChartsData } from "@/lib/supabase/leaderboardAnalytics";
-import { SDG_COLORS } from "@/constants/sdg";
+import { SdgTag } from "@/components/ui/SdgTag";
 import {
   formatGroupScoreSubline,
   formatGroupSdgSubline,
@@ -167,20 +168,9 @@ function LeaderboardSdgTags({
   }
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {ids.map((id) => {
-        const c = SDG_COLORS[id];
-        if (!c) return null;
-        return (
-          <span
-            key={id}
-            className="inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
-            style={{ backgroundColor: c.bg, color: c.text }}
-            title={c.label}
-          >
-            SDG {id}
-          </span>
-        );
-      })}
+      {ids.map((id) => (
+        <SdgTag key={id} id={id} showLabel />
+      ))}
       <span className="text-[10px] leading-snug text-[var(--color-subtle)]">
         N={ids.length}（相異）+ M={maxLabel}（單日最多）＝
         {ids.length + maxLabel} （排名用）
@@ -1100,43 +1090,49 @@ export function LeaderboardShell() {
               ) : null}
 
               {dimension === "weighted" && !groupCharts.loading && groupCharts.data ? (
-                <div
-                  key={`group-charts-${period}`}
-                  className="grid min-w-0 gap-4 lg:grid-cols-2"
-                >
-                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
-                    <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                      {dailyCompletionTitle(
-                        groupCharts.data.dailyChartMode,
-                        "本群",
-                      )}
-                    </h3>
-                    <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-                      {dailyCompletionSubtitle(groupCharts.data.dailyChartMode)}
-                    </p>
-                    <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
-                      <div className="flex min-h-[200px] w-full min-w-0 flex-col justify-end">
-                        <GlobalDailyCompletionBars
-                          points={groupCharts.data.dailyCompletions}
+                <>
+                  <div
+                    key={`group-charts-${period}`}
+                    className="grid min-w-0 gap-4 lg:grid-cols-2"
+                  >
+                    <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
+                      <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+                        {dailyCompletionTitle(
+                          groupCharts.data.dailyChartMode,
+                          "本群",
+                        )}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
+                        {dailyCompletionSubtitle(groupCharts.data.dailyChartMode)}
+                      </p>
+                      <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
+                        <div className="flex min-h-[200px] w-full min-w-0 flex-col justify-end">
+                          <GlobalDailyCompletionBars
+                            points={groupCharts.data.dailyCompletions}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
+                      <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+                        SDG 行動分布（本群）
+                      </h3>
+                      <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
+                        本群成員打卡之 SDG 計次；長條為佔總次數比例（%），配色同
+                        SDG 標籤
+                      </p>
+                      <div className="mt-4 max-h-64 overflow-y-auto pr-1">
+                        <SdgDistributionBars
+                          rows={groupCharts.data.sdgDistribution}
                         />
                       </div>
                     </div>
                   </div>
-                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-white)] p-4 shadow-sm">
-                    <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                      SDG 行動分布（本群）
-                    </h3>
-                    <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-                      本群成員打卡之 SDG 計次；長條為佔總次數比例（%），配色同
-                      SDG 標籤
-                    </p>
-                    <div className="mt-4 max-h-64 overflow-y-auto pr-1">
-                      <SdgDistributionBars
-                        rows={groupCharts.data.sdgDistribution}
-                      />
-                    </div>
-                  </div>
-                </div>
+                  <GroupRecordsSection
+                    key={`group-records-${myGroupId}-${period}`}
+                    groupId={myGroupId}
+                  />
+                </>
               ) : dimension === "weighted" && groupCharts.loading ? (
                 <div className="grid min-w-0 gap-4 lg:grid-cols-2">
                   <Skeleton className="h-56 rounded-2xl" />

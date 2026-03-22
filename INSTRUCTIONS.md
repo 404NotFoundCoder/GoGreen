@@ -160,7 +160,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### SDG Tag 顏色
 
-**單一來源（前端）：** 畫面上所有 SDG 標籤配色與文案以 **`constants/sdg.ts` 的 `SDG_COLORS`** 為準——背景為聯合國官方色加上 8 位 hex 透明度（`…18` 約 10%），`text` 為對應深色，`label` 為簡短中文。`components/ui/SdgTag.tsx` 預設僅顯示 `SDG N`，傳 **`showLabel`** 可一併顯示中文；`ChecklistStampCard`／`ChecklistRow` 可傳 **`sdgShowLabel`**（預設 `true`）。不套用主色系。
+**單一來源（前端）：** 畫面上所有 SDG 標籤配色與文案以 **`constants/sdg.ts` 的 `SDG_COLORS`** 為準——背景為聯合國官方色加上 8 位 hex 透明度（`…18` 約 10%），`text` 為對應深色，`label` 為簡短中文。**產品內文一律與「今日」一致**：**`SDG N` ＋ 簡短中文**（**`components/ui/SdgTag.tsx`**，預設 **`showLabel`**；`ChecklistStampCard`／`ChecklistRow` 之 **`sdgShowLabel`** 預設 `true`）。完成率／排行榜等列表請用 **`components/ui/SdgTagStrip.tsx`**（內部為多枚 **`SdgTag` `showLabel`**），勿再手寫僅 **`SDG N`** 之 chip。**完成者「照片牆」**（全體榜、個人、**群組紀錄**）：縮圖**左上角**疊**成員頭像**（**`avatar_url`**，無則暱稱首字），與 **`GlobalActionCompletionSection`** 一致。
 
 **為什麼資料庫還有 `public.sdgs`？** 目前 **沒有任何 Next.js 程式碼** 向 Supabase 讀取 `sdgs` 來渲染 UI；清單與打卡只存 `sdg_ids`（整數陣列）。表中的 `label`／`color`／`text_color` 是早期 schema／seed 預留，方便在 **SQL、報表、未來後台** 用同一套語意對照；與常數並存會造成「兩份要維護」的負擔。原則：**要改標籤外觀只改 `constants/sdg.ts`**；若希望 DB 與部署後台一致，再手動跑 migration 或之後改為「只從 API 讀 `sdgs`、刪掉常數」擇一即可。
 
@@ -350,7 +350,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
   - **期間列**：**今日／本週／本月／自訂** 四欄 **等寬** 同一膠囊列（**自訂**＝日曆圖示＋「自訂」＋ chevron **同一橫列**）。選 **自訂** 且已套用區間時，該欄為**整格淺綠**選中態（無「使用中」小徽章）。
   - **自訂區間**：點第四欄開啟 **`DateRangePickerPanel`**（雙月曆、**拖曳**選起訖；`components/ui/DateRangePickerPanel.tsx`）。面板為 **`absolute` 浮層**（錨在期間列容器內），**不推擠**下方完成率列表。套用後 **`useGlobalActionCompletionStats({ start, end })`**，密度圖版面依 **`resolveHeatmapLayoutForDateRange`**（短區間橫向日格、長區間 GitHub 週欄）。
   - 各列可顯示 **SDG 標籤**（RPC 回傳 `sdg_ids`）；須 **`20260322150000_action_completion_sdg_ids.sql`**。
-  - 點密度圖格之彈窗：**完成者清單／照片牆**；佐證圖仍為 `daily_checkins.photo_url`。若已套用 **`20260322163000_leaderboard_cell_participants_avatar.sql`**，RPC 另回傳 **`avatar_url`**（`users.photo_url`）供頭像；**未套用時**前端仍相容，僅無頭像 URL、以首字代替。
+  - **佐證相機（綠格／列標）**：在選定區間內，若某日該公版項目或自訂標題之打卡列 **`daily_checkins.photo_url` 非空**，則該日密度格（且當日有完成人次時）右下角顯示 **相機圖示**；若區間內**任一日**有佐證，摺疊列標題旁顯示相機並附副標 **「含佐證」**。資料來源：公版項目 **`rpc_leaderboard_template_item_day_photo_dates`**（**`20260322320000_action_completion_photo_marks.sql`**）；自訂標題 **`rpc_leaderboard_custom_title_day_photo_dates`**（**`20260322170000_custom_title_day_photo_dates.sql`**；**`fetchCustomTitlePhotoDatesSetForRange`**）。未套用相關 migration 時前端多處 **`.catch` 空 Set**，頁面不崩潰但角標可能不準。
+  - 點密度圖格之彈窗：**完成者清單／照片牆**；佐證圖仍為 `daily_checkins.photo_url`。若已套用 **`20260322163000_leaderboard_cell_participants_avatar.sql`**（及群組版 **`rpc_group_*_cell_participants`**），RPC 另回傳 **`avatar_url`**（`users.photo_url`）供**清單與照片牆縮圖左上角**疊圖；**未套用時**前端仍相容，僅無頭像 URL、以首字代替。
   - 基礎 migration：**`20260322123000_leaderboard_action_density_rpcs.sql`**；並見 **`20260322140000_resync_default_checklist.sql`**／**`20260322141000_custom_title_stats_list_days.sql`**／**`20260322142000_custom_title_stats_include_list_only.sql`**。
 - **行動完成率公式與「自訂 · 依標題彙總」**（區間＝該卡 **今日／本週／本月** 選擇，非頁首榜單期間）：
   - **公版**：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）× 100%；項目來自 `is_default` 範本。若 DB 與 seed 文案／筆數脫節（例如曾手動改表、`on conflict do nothing` 未覆寫），可執行 **`20260322140000_resync_default_checklist.sql`** 還原 10 筆 canonical 並收斂單一預設範本。
@@ -361,6 +362,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`（以 `group_members` **全體成員**為準，無打卡者仍列入 0 分）、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
 - 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）；**熱門行動**（第 1 名標題與期間內打卡列數）見上節 **「熱門行動統計卡」**、`rpc_group_hot_actions`（須 **`20260322180000_group_hot_actions_rpc.sql`**）
 - 圖表：**本群**每日**分數表**（折線，成員 **`raw_score` 按日加總**）、**本群** SDG 行動分布（`rpc_group_sdg_distribution`）**僅在子 tab「總加權」顯示**；圖表區第一卡目前為 **`bg-[var(--color-surface)]`**、SDG 卡為白底（與全體榜第一卡皆白底略異，可再統一）。**各成員完成項數橫條**（`GroupMemberCountBars`）仍於各子 tab 顯示 `[done]`（需 `20260321230100_group_sdg_distribution_rpc.sql`）
+- **群組紀錄**（分數表／SDG 圖**下方**、同樣僅「總加權」）：**`GroupRecordsSection`** — **各項完成率**（邏輯同全體榜但僅限本群成員；**`20260322310000_group_records_rpcs.sql`** 之 `rpc_group_default_template_item_stats`、`rpc_group_custom_title_stats`、日密度與 cell participants）；**佐證相機**與全體榜同構（綠格／列「含佐證」），RPC 見 **`20260322320000_action_completion_photo_marks.sql`**（`rpc_group_template_item_day_photo_dates`、`rpc_group_custom_title_day_photo_dates`；**`lib/supabase/groupRecords.ts`**）。**每週紀錄**唯讀（無填寫／編輯／刪除），表格列有打卡日與人數，點開以**置中日＋左右切換**瀏覽，其下依序顯示各成員當日清單（**`rpc_group_peer_day_snapshot`** + **`GroupPeerDayPanel`**，`ChecklistRow`／`ChecklistStampCard` 唯讀）。
 - 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
 ### 群組 vs 群組 `[done]`
@@ -378,7 +380,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - **分頁**：**各項完成率**、**每週紀錄**；**填寫紀錄**按鈕（＋文字）開啟選日對話框（標題「填寫紀錄」、**去填寫** 進入該日編輯；日期欄可 **`showPicker()`** 整欄點開日曆；僅 **X** 關閉，**不可**點遮罩關閉）。
 - **統計區間**（與頁頂 `LeaderboardPeriodBar` **分開**）：今日／本週／本月／自訂；**`getActionCompletionDateBounds`**／**`resolveHeatmapLayoutForActionCompletion`**／**`resolveHeatmapLayoutForDateRange`** 與全體榜 **`GlobalActionCompletionSection`** 同構。
-- **各項完成率**：**`useProfileActionCompletionStats`**；RPC **`20260322200000_profile_action_completion_rpcs.sql`**（`rpc_profile_template_item_stats`、`rpc_profile_custom_title_stats`、日密度 `rpc_profile_*_day_density`，僅 **`auth.uid()`**）。展開列為**二元**密度（有打卡 **#849B6D**／無 **白**）；密度區 **`overflow-y-visible`** 避免多餘直向捲軸。點格開「我的完成紀錄」modal（仍可點遮罩關閉，與日彈窗不同）。
+- **各項完成率**：**`useProfileActionCompletionStats`**；RPC **`20260322200000_profile_action_completion_rpcs.sql`**（`rpc_profile_template_item_stats`、`rpc_profile_custom_title_stats`、日密度 `rpc_profile_*_day_density`，僅 **`auth.uid()`**）。展開列為**二元**密度（有打卡 **#849B6D**／無 **白**）；**佐證相機**與全體榜同構（有打卡且該日有佐證照片之格顯示相機、列上「含佐證」），須 **`20260322320000_action_completion_photo_marks.sql`**（`rpc_profile_template_item_day_photo_dates`、`rpc_profile_custom_title_day_photo_dates`；**勿**用全體榜自訂 RPC 查個人自訂）。密度區 **`overflow-y-visible`** 避免多餘直向捲軸。點格開「我的完成紀錄」modal（仍可點遮罩關閉，與日彈窗不同）。
 - **每週紀錄**：**`fetchUserDailyStatsInRange`** + **`fetchUserDayActivityExtrasInRange`**（`lib/supabase/checklist.ts`：自訂格數、自訂完成數、當日是否有佐證圖）；僅列 **`completed_count > 0`**。整列可點開 **檢視**；**編輯**／**刪除**（**`clearUserCalendarDay`**，確認後清空該日打卡與 `user_daily_custom_items` 連結）。**日彈窗**：內嵌 **`TodayChecklist`** + **`useTodayChecklist(日期)`**；**檢視**＝**`variant="readonly"`**（**`ChecklistStampCard`／`ChecklistRow`** **`readOnly`**：不灰隱、不可勾選，**可**檢視佐證縮圖與大圖）；**編輯**＝互動，底欄 **儲存並關閉**（關閉並 refetch 列表；勾選仍即時寫入 DB）。遮罩淡色 **`rgba(45,52,40,0.22)`**、**不可**點外關閉；標題列 **日期置中**，**上／下一天** 限目前紀錄區間（`chartStart`～`chartEnd`）。
 
 - **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間分數加總、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
@@ -507,7 +509,7 @@ constants/        → 全域常數、資料定義（config、scoring、sdg、che
 負責把資料接進來再渲染。
 
 純展示型元件（UI Component）通常放在 `components/ui/`，所有資料由 props 傳入，
-不依賴任何 context，可在任何地方複用。例：`Skeleton`、`SdgTag`、`ImageLightbox`（佐證大圖）、`ConfirmDialog`（確認移除／刪除）。功能型表單／對話框亦可置於 `components/checklist/`（如 `EditCustomItemDialog`）。
+不依賴任何 context，可在任何地方複用。例：`Skeleton`、`SdgTag`、`SdgTagStrip`、`ImageLightbox`（佐證大圖）、`ConfirmDialog`（確認移除／刪除）。功能型表單／對話框亦可置於 `components/checklist/`（如 `EditCustomItemDialog`）。
 
 > 新增資料夾或模組時，請在 [Changelog](#changelog) 說明其用途，
 > 讓後人不用翻 code 就知道每個資料夾在做什麼。
@@ -771,8 +773,11 @@ group by g.id, g.name, g.is_public;
 | `20260322142000_custom_title_stats_include_list_only.sql` | `rpc_leaderboard_custom_title_stats` 以 **full outer join** 合併打卡與列入清單；**僅列入、尚未打卡**之標題亦回傳（完成率 0%） |
 | `20260322150000_action_completion_sdg_ids.sql` | `rpc_leaderboard_default_template_item_stats`、`rpc_leaderboard_custom_title_stats` 增 **`sdg_ids`**（各項完成率列 SDG 標籤） |
 | `20260322163000_leaderboard_cell_participants_avatar.sql` | `rpc_leaderboard_*_cell_participants` 增 **`avatar_url`**（`users.photo_url`）；**`handle_new_user`** 併寫 Google **`picture`**（選用；完成者頭像與佐證 `photo_url` 分欄） |
+| `20260322310000_group_records_rpcs.sql` | 群組內完成率／熱力／完成者名單／**`rpc_group_peer_day_snapshot`**／**`rpc_group_photo_dates_in_range`**（皆 **`grant … to authenticated`**；呼叫者須為該群成員） |
+| `20260322170000_custom_title_day_photo_dates.sql` | 全體榜自訂標題：**`rpc_leaderboard_custom_title_day_photo_dates`**（**`grant … to anon, authenticated`**）；與公版項目佐證日 RPC 分檔，部署時兩者皆須存在，熱力圖／列標「含佐證」才完整 |
+| `20260322320000_action_completion_photo_marks.sql` | 各項完成率「**佐證日**」查詢（`daily_checkins.photo_url` 非空之曆日）：全體公版 **`rpc_leaderboard_template_item_day_photo_dates`**（**`grant … to anon, authenticated`**）；個人 **`rpc_profile_template_item_day_photo_dates`**、**`rpc_profile_custom_title_day_photo_dates`**（**僅** `auth.uid()`）；群組 **`rpc_group_template_item_day_photo_dates`**、**`rpc_group_custom_title_day_photo_dates`**（**僅**該群成員之打卡；呼叫者須為該群成員）。供熱力圖格角標與摺疊列「含佐證」；前端 **`lib/supabase/leaderboardActionHeatmap.ts`**、**`groupRecords.ts`** |
 
-前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
+前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`、`lib/supabase/groupRecords.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
 
 ### 開發／測試：清空業務資料並重設公版（`wipe_and_reseed.sql`）
 
@@ -1324,6 +1329,24 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 > 標籤：`[FEAT]` 新功能　`[FIX]` 修正　`[ARCH]` 架構調整　`[CONST]` 常數異動　`[DB]` 資料庫異動　`[DOCS]` 文件更新
 
 ---
+
+### [2026-03-23] v0.10.53 — 各項完成率佐證相機（綠格／列標）文件與 RPC 表
+
+- `[DOCS]` **本文件**：**`GlobalActionCompletionSection`**／**`ProfileRecordsSection`**／**`GroupRecordsSection`** 補 **佐證相機**（綠格／「含佐證」列）；全體榜公版 vs 自訂佐證日分別對應 **`20260322320000_action_completion_photo_marks.sql`** 與 **`20260322170000_custom_title_day_photo_dates.sql`**
+- `[DOCS]` **RPC 表**新增 **`20260322170000`**、**`20260322320000`** 列與函式摘要（**`grant`**：全體公版／自訂 `anon`+`authenticated`、個人／群組僅 `authenticated`）
+
+### [2026-03-22] v0.10.52 — SDG 標籤統一「編號＋簡稱」、群組照片牆頭像
+
+- `[FEAT]` **`SdgTagStrip`**（`components/ui/SdgTagStrip.tsx`）；**`SdgTag`** 預設 **`showLabel`**；**`ProfileRecordsSection`**／**`GlobalActionCompletionSection`**／**`GroupRecordsSection`**／**`LeaderboardShell`**／**`LeaderboardViz`** 改為與「今日」相同之 **SDG N＋中文**
+- `[FEAT]` **`GroupRecordsSection`** 完成者**照片牆**縮圖左上角疊 **頭像**（同全體榜）
+- `[DOCS]` **本文件**「單一來源」SDG 與照片牆說明；**`components/`** 表補 **`SdgTagStrip`**
+
+### [2026-03-22] v0.10.51 — 群組內榜「群組紀錄」區（各項完成率／唯讀每週紀錄）
+
+- `[FEAT]` **`LeaderboardShell`**「群組內」、子 tab **總加權**、本群圖表下方：**`GroupRecordsSection`**（**`useGroupActionCompletionStats`**、**`lib/supabase/groupRecords.ts`**）；**`20260322310000_group_records_rpcs.sql`**（`rpc_group_*`、**`rpc_group_peer_day_snapshot`**、**`rpc_group_photo_dates_in_range`**）
+- `[FEAT]` **`GroupPeerDayPanel`**：同群成員某日清單唯讀（**`ChecklistRow`／`ChecklistStampCard`**）
+- `[DB]` 群組 RPC 僅 **`grant … to authenticated`**
+- `[DOCS]` 群組內榜條目、RPC 表、**README** 功能表與 migration 清單
 
 ### [2026-03-23] v0.10.50 — 個人「每週紀錄」分頁、填寫紀錄、`/today?date=` 與文件對齊
 

@@ -24,6 +24,7 @@ import {
   type LeaderboardPeriod,
 } from "@/lib/utils/leaderboard";
 
+/** 分數表折線資料點：`total` 為原始分加總（依圖表範圍：全體、本群或個人） */
 export type DailyCompletionPoint = {
   date: string;
   total: number;
@@ -50,6 +51,7 @@ export type GlobalLeaderboardChartsData = {
     sdgUnionCount: number;
     maxSdgCoverage: number;
   } | null;
+  /** 分數表折線：各點為該日／該段 **原始分加總**（圖表範圍內使用者） */
   dailyCompletions: DailyCompletionPoint[];
   dailyChartMode: DailyChartMode;
   sdgDistribution: { sdgId: number; count: number }[];
@@ -217,7 +219,7 @@ function buildYearlyBuckets(
   return out;
 }
 
-/** 與全體榜「完成項次」同構，可用於個人完成數或單日原始分加總 */
+/** 與全體榜「分數表」同構：`total` 為該日／該段之原始分加總（全體／群組彙總或個人單日） */
 export function buildCompletionChartSeries(
   period: LeaderboardPeriod,
   dailyMap: Map<string, number>,
@@ -289,7 +291,10 @@ function aggregateFromStats(
   for (const row of filtered) {
     totalCompletions += row.completed_count ?? 0;
     const d = row.date;
-    dailyMap.set(d, (dailyMap.get(d) ?? 0) + (row.completed_count ?? 0));
+    dailyMap.set(
+      d,
+      (dailyMap.get(d) ?? 0) + Number(row.raw_score ?? 0),
+    );
     const uid = row.user_id;
     const cur = userMaxSdg.get(uid) ?? 0;
     userMaxSdg.set(uid, Math.max(cur, row.sdg_coverage ?? 0));
@@ -512,7 +517,7 @@ export async function fetchMySdgDistribution(
   }));
 }
 
-/** 個人資料圖：完成項次長條、SDG 分布與所選「本週／本月／至今」一致。「至今」區間為 **今年 1/1～今日**（與打卡密度 GitHub 圖一致）。 */
+/** 個人資料圖：分數表折線（`dailyScores`）、完成筆數系列（`dailyCompletions`）、SDG 分布；期間與所選「本週／本月／至今」一致。「至今」為 **今年 1/1～今日**（與打卡密度 GitHub 圖一致）。 */
 export async function fetchUserProfileCharts(
   period: LeaderboardPeriod,
   userId: string,

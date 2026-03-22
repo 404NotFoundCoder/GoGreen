@@ -218,30 +218,31 @@ function dailyCompletionTitle(
   mode: GlobalLeaderboardChartsData["dailyChartMode"] | undefined,
   scopeLabel: string,
 ): string {
-  if (mode === "week_daily") return `完成項次（${scopeLabel}·本週每日）`;
+  if (mode === "week_daily") return `分數表（${scopeLabel}·本週每日）`;
   if (mode === "month_four_segments")
-    return `完成項次（${scopeLabel}·本月四週）`;
-  if (mode === "all_daily") return `完成項次（${scopeLabel}·至今·每日）`;
+    return `分數表（${scopeLabel}·本月四週）`;
+  if (mode === "all_daily") return `分數表（${scopeLabel}·至今·每日）`;
   if (mode === "all_four_segments")
-    return `完成項次（${scopeLabel}·至今·四週）`;
-  if (mode === "all_monthly") return `完成項次（${scopeLabel}·至今·按月）`;
-  if (mode === "all_yearly") return `完成項次（${scopeLabel}·至今·按年）`;
-  return `完成項次（${scopeLabel}）`;
+    return `分數表（${scopeLabel}·至今·四週）`;
+  if (mode === "all_monthly") return `分數表（${scopeLabel}·至今·按月）`;
+  if (mode === "all_yearly") return `分數表（${scopeLabel}·至今·按年）`;
+  return `分數表（${scopeLabel}）`;
 }
 
 function dailyCompletionSubtitle(
   mode: GlobalLeaderboardChartsData["dailyChartMode"] | undefined,
 ): string {
   if (mode === "week_daily")
-    return "本週一至今日每日加總；無完成為 0。切換本週／本月／至今會重算。";
+    return "本週一至今日，折線為每日原始分加總（圖表範圍內使用者）；無資料為 0。切換本週／本月／至今會重算。";
   if (mode === "month_four_segments")
-    return "將本月 1 日至今日均分為四週，加總各週完成數（非自然週）。";
+    return "本月 1 日至今日均分四段（非自然週），每段為段內每日原始分加總再累計。";
   if (mode === "all_daily")
-    return "至今未滿一週：補齊該曆週 7 日逐日顯示；滿一週至 7 日內亦逐日；0 為淺灰底。";
+    return "至今未滿一週：補齊該曆週 7 日逐日顯示；滿一週至 7 日內亦逐日。數值為當日原始分加總。";
   if (mode === "all_four_segments")
-    return "至今區間 8～31 天：依日數均分四週加總。";
-  if (mode === "all_monthly") return "至今區間 32 天～一年：依曆月加總。";
-  if (mode === "all_yearly") return "至今超過一年：依曆年加總。";
+    return "至今區間 8～31 天：依日數均分四段，每段為段內原始分加總。";
+  if (mode === "all_monthly")
+    return "至今區間 32 天～一年：依曆月彙總原始分加總。";
+  if (mode === "all_yearly") return "至今超過一年：依曆年彙總原始分加總。";
   return "";
 }
 
@@ -903,7 +904,7 @@ export function LeaderboardShell() {
                   {dailyCompletionSubtitle(globalCharts.data.dailyChartMode)}
                 </p>
                 <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
-                  <div className="flex min-h-[160px] w-full min-w-0 flex-col justify-end">
+                  <div className="flex min-h-[200px] w-full min-w-0 flex-col justify-end">
                     <GlobalDailyCompletionBars
                       points={globalCharts.data.dailyCompletions}
                     />
@@ -1040,7 +1041,7 @@ export function LeaderboardShell() {
                       {dailyCompletionSubtitle(groupCharts.data.dailyChartMode)}
                     </p>
                     <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
-                      <div className="flex min-h-[160px] w-full min-w-0 flex-col justify-end">
+                      <div className="flex min-h-[200px] w-full min-w-0 flex-col justify-end">
                         <GlobalDailyCompletionBars
                           points={groupCharts.data.dailyCompletions}
                         />

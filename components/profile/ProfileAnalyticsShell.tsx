@@ -17,7 +17,7 @@ export function ProfileAnalyticsShell() {
           我的數據與排行
         </h2>
         <p className="mt-1 text-sm text-[var(--color-ink-secondary)]">
-          本週／本月與排行榜期間一致；選「至今」時，下方圖表（密度、完成項次、SDG）為今年
+          本週／本月與排行榜期間一致；選「至今」時，下方圖表（密度、分數表、SDG）為今年
           1/1 起算至今日；「我的排行摘要」仍依全體榜「至今」之累計區間。
         </p>
       </div>

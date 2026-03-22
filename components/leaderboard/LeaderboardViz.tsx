@@ -1,13 +1,93 @@
 "use client";
 
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { RankMark } from "@/components/leaderboard/RankMark";
+import { TIMEZONE } from "@/constants/config";
 import { SDG_COLORS } from "@/constants/sdg";
 import type { DailyCompletionPoint } from "@/lib/supabase/leaderboardAnalytics";
 import type { RankedRow } from "@/lib/utils/leaderboard";
 
-const CHART_INNER_PX = 112;
-/** 每欄最小寬度：避免窄螢幕 flex 擠成單一可見色塊，並在點位多時改以橫向捲動閱讀 */
-const BAR_COL_MIN_PX = 24;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 曆日座標：X 軸顯示「月/日」；非 ISO 日期（如四週彙總）沿用後端 label */
+function chartXLabel(p: DailyCompletionPoint): string {
+  if (ISO_DATE.test(p.date)) {
+    return formatInTimeZone(
+      parseISO(`${p.date}T12:00:00`),
+      TIMEZONE,
+      "M/d",
+    );
+  }
+  return p.label;
+}
+
+/** 每點最小水平間距：點位多時外層橫向捲動 */
+const LINE_POINT_MIN_PX = 28;
+const CHART_VIEW_H = 200;
+const PAD_L = 40;
+const PAD_R = 14;
+const PAD_T = 14;
+const PAD_B = 36;
+
+function niceYMax(maxVal: number): number {
+  if (maxVal <= 0) return 1;
+  if (maxVal <= 5) return 5;
+  if (maxVal <= 10) return 10;
+  const pow10 = 10 ** Math.floor(Math.log10(maxVal));
+  const n = maxVal / pow10;
+  const up = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return up * pow10;
+}
+
+function yTicks(ymax: number): number[] {
+  if (ymax <= 1) return [0, 1];
+  const step =
+    ymax <= 10
+      ? ymax <= 5
+        ? 1
+        : 2
+      : ymax <= 40
+        ? 10
+        : ymax <= 100
+          ? 20
+          : Math.max(1, Math.round(ymax / 4));
+  const ticks: number[] = [];
+  for (let v = 0; v <= ymax + 1e-9; v += step) {
+    ticks.push(Math.round(v * 1000) / 1000);
+    if (ticks.length > 8) break;
+  }
+  if (ticks[ticks.length - 1]! < ymax) ticks.push(ymax);
+  return ticks;
+}
+
+type Pt = { x: number; y: number };
+
+function smoothLinePath(points: Pt[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) {
+    const p = points[0]!;
+    return `M ${p.x} ${p.y}`;
+  }
+  let d = `M ${points[0]!.x} ${points[0]!.y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const x0 = i > 0 ? points[i - 1]!.x : points[i]!.x;
+    const y0 = i > 0 ? points[i - 1]!.y : points[i]!.y;
+    const x1 = points[i]!.x;
+    const y1 = points[i]!.y;
+    const x2 = points[i + 1]!.x;
+    const y2 = points[i + 1]!.y;
+    const x3 = i !== points.length - 2 ? points[i + 2]!.x : x2;
+    const y3 = i !== points.length - 2 ? points[i + 2]!.y : y2;
+    const cp1x = x1 + (x2 - x0) / 6;
+    const cp1y = y1 + (y2 - y0) / 6;
+    const cp2x = x2 - (x3 - x1) / 6;
+    const cp2y = y2 - (y3 - y1) / 6;
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+  }
+  return d;
+}
 
 function MemberBarAvatar({
   nickname,
@@ -37,54 +117,169 @@ function MemberBarAvatar({
   );
 }
 
+/** 分數表：各點 `total` 為原始分加總（與後端粒度一致），平滑折線＋面積 */
 export function GlobalDailyCompletionBars({
   points,
-  valueSuffix = "次完成",
+  valueSuffix = "分",
 }: {
   points: DailyCompletionPoint[];
-  /** 例如「次完成」「分」 */
+  /** 數值單位，用於 tooltip／無障礙說明 */
   valueSuffix?: string;
 }) {
-  const max = Math.max(1, ...points.map((p) => p.total));
+  const areaGradId = useId().replace(/:/g, "");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const apply = () => setContainerW(el.clientWidth);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [points.length]);
+
   if (points.length === 0) {
     return (
-      <p className="text-sm text-[var(--color-subtle)]">此期間尚無完成資料。</p>
+      <div ref={wrapRef} className="w-full min-w-0">
+        <p className="text-sm text-[var(--color-subtle)]">此期間尚無完成資料。</p>
+      </div>
     );
   }
-  const minChartWidth = `max(100%, ${points.length * BAR_COL_MIN_PX}px)`;
+
+  const n = points.length;
+  const ymax = niceYMax(Math.max(0, ...points.map((p) => p.total)));
+  const ticks = yTicks(ymax);
+  const minContentW = PAD_L + PAD_R + Math.max(n * LINE_POINT_MIN_PX, n === 1 ? 100 : 72);
+  const plotW = Math.max(
+    containerW > 0 ? containerW : minContentW,
+    minContentW,
+  );
+  const innerW = plotW - PAD_L - PAD_R;
+  const innerH = CHART_VIEW_H - PAD_T - PAD_B;
+  const baseY = PAD_T + innerH;
+  const xs = points.map((_, i) =>
+    n === 1 ? PAD_L + innerW / 2 : PAD_L + (innerW * i) / (n - 1),
+  );
+  const pts: Pt[] = points.map((p, i) => {
+    const t = p.total;
+    const y =
+      ymax <= 0
+        ? baseY
+        : PAD_T + innerH * (1 - Math.min(1, Math.max(0, t / ymax)));
+    return { x: xs[i]!, y };
+  });
+
+  const lineD = smoothLinePath(pts);
+  const areaD =
+    pts.length === 0
+      ? ""
+      : pts.length === 1
+        ? `M ${pts[0]!.x - 14} ${baseY} L ${pts[0]!.x + 14} ${baseY} L ${pts[0]!.x} ${pts[0]!.y} Z`
+        : `${lineD} L ${pts[pts.length - 1]!.x} ${baseY} L ${pts[0]!.x} ${baseY} Z`;
+
+  const xLabelFontPx = n > 14 ? 9 : 10;
+
   return (
-    <div
-      className="flex w-full min-w-0 items-end justify-start gap-px sm:gap-1"
-      style={{ height: CHART_INNER_PX, minWidth: minChartWidth }}
-    >
-      {points.map((p) => {
-        const isZero = p.total <= 0;
-        const hPx = isZero
-          ? 3
-          : Math.max(
-              6,
-              Math.round((p.total / max) * (CHART_INNER_PX - 4)),
-            );
-        return (
-          <div
-            key={p.date}
-            className="flex min-w-[20px] flex-1 shrink-0 flex-col items-center justify-end gap-1"
-          >
-            <div
-              className={
-                isZero
-                  ? "w-full max-w-[28px] rounded-t-md bg-[var(--color-muted)]/40"
-                  : "w-full max-w-[28px] rounded-t-md bg-gradient-to-t from-[var(--color-primary-dark)] to-[var(--color-primary-strong)] shadow-md shadow-[var(--color-primary-dark)]/25"
-              }
-              style={{ height: hPx }}
-              title={`${p.date}：${p.total} ${valueSuffix}`}
+    <div ref={wrapRef} className="w-full min-w-0" style={{ minWidth: plotW }}>
+      <svg
+        role="img"
+        aria-label={`期間原始分趨勢，共 ${n} 個資料點`}
+        width={plotW}
+        height={CHART_VIEW_H}
+        className="block max-w-none text-[var(--color-primary-strong)]"
+        viewBox={`0 0 ${plotW} ${CHART_VIEW_H}`}
+      >
+        <defs>
+          <linearGradient id={areaGradId} x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor="var(--color-primary-strong)"
+              stopOpacity="0.22"
             />
-            <span className="w-full truncate text-center text-[10px] leading-tight text-[var(--color-subtle)] sm:text-[10px]">
-              {p.label}
-            </span>
-          </div>
-        );
-      })}
+            <stop
+              offset="100%"
+              stopColor="var(--color-primary-strong)"
+              stopOpacity="0.02"
+            />
+          </linearGradient>
+        </defs>
+
+        {ticks.map((tv) => {
+          const gy =
+            ymax <= 0
+              ? baseY
+              : PAD_T + innerH * (1 - Math.min(1, tv / ymax));
+          return (
+            <g key={tv}>
+              <line
+                x1={PAD_L}
+                y1={gy}
+                x2={plotW - PAD_R}
+                y2={gy}
+                stroke="var(--color-muted)"
+                strokeOpacity={0.35}
+                strokeWidth={1}
+              />
+              <text
+                x={PAD_L - 6}
+                y={gy + 4}
+                textAnchor="end"
+                className="fill-[var(--color-subtle)]"
+                style={{ fontSize: 10 }}
+              >
+                {Number.isInteger(tv) ? tv : tv.toFixed(1)}
+              </text>
+            </g>
+          );
+        })}
+
+        {areaD ? (
+          <path d={areaD} fill={`url(#${areaGradId})`} stroke="none" />
+        ) : null}
+        {lineD ? (
+          <path
+            d={lineD}
+            fill="none"
+            stroke="var(--color-primary-strong)"
+            strokeWidth={2.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+
+        {points.map((p, i) => {
+          const cx = pts[i]!.x;
+          const cy = pts[i]!.y;
+          return (
+            <g key={p.date}>
+              <title>{`${p.date}：${p.total} ${valueSuffix}`}</title>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={4.5}
+                fill="var(--color-primary-strong)"
+                stroke="var(--color-white)"
+                strokeWidth={1.5}
+              />
+            </g>
+          );
+        })}
+
+        {points.map((p, i) => (
+          <text
+            key={`xl-${p.date}`}
+            x={xs[i]!}
+            y={CHART_VIEW_H - 10}
+            textAnchor="middle"
+            className="fill-[var(--color-subtle)]"
+            style={{ fontSize: xLabelFontPx }}
+          >
+            {chartXLabel(p)}
+          </text>
+        ))}
+      </svg>
     </div>
   );
 }

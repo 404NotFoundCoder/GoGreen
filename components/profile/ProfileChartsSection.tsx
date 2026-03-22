@@ -460,29 +460,29 @@ function profileCompletionTitle(
   mode: DailyChartMode | undefined,
   pl: string,
 ): string {
-  if (mode === "week_daily") return `完成項次（個人·${pl}·每日）`;
+  if (mode === "week_daily") return `分數表（個人·${pl}·每日）`;
   if (mode === "month_four_segments")
-    return `完成項次（個人·${pl}·四週）`;
-  if (mode === "all_daily") return `完成項次（個人·至今·每日）`;
+    return `分數表（個人·${pl}·四週）`;
+  if (mode === "all_daily") return `分數表（個人·至今·每日）`;
   if (mode === "all_four_segments")
-    return `完成項次（個人·至今·四週）`;
-  if (mode === "all_monthly") return `完成項次（個人·至今·按月）`;
-  if (mode === "all_yearly") return `完成項次（個人·至今·按年）`;
-  return `完成項次（個人·${pl}）`;
+    return `分數表（個人·至今·四週）`;
+  if (mode === "all_monthly") return `分數表（個人·至今·按月）`;
+  if (mode === "all_yearly") return `分數表（個人·至今·按年）`;
+  return `分數表（個人·${pl}）`;
 }
 
 function profileCompletionSubtitle(mode: DailyChartMode | undefined): string {
   if (mode === "week_daily")
-    return "本週一至今日每日加總；無完成為 0。與全體榜「完成項次」粒度一致。";
+    return "本週一至今日每日個人原始分（折線圖）；無打卡為 0。與全體榜「分數表」粒度一致。";
   if (mode === "month_four_segments")
-    return "將本月 1 日至今日均分為四週，加總各週完成數（非自然週）。";
+    return "本月 1 日至今日均分四段（非自然週），每段為段內每日個人原始分再累計。";
   if (mode === "all_daily")
-    return "至今未滿一週：補齊該曆週 7 日逐日顯示；滿一週至 7 日內亦逐日。";
+    return "至今未滿一週：補齊該曆週 7 日逐日顯示；滿一週至 7 日內亦逐日。數值為個人當日原始分。";
   if (mode === "all_four_segments")
-    return "至今區間 8～31 天：依日數均分四週加總。";
+    return "至今區間 8～31 天：依日數均分四段，每段為段內個人原始分加總。";
   if (mode === "all_monthly")
-    return "至今區間 32 天～一年：依曆月加總。";
-  if (mode === "all_yearly") return "至今超過一年：依曆年加總。";
+    return "至今區間 32 天～一年：依曆月彙總個人原始分。";
+  if (mode === "all_yearly") return "至今超過一年：依曆年彙總個人原始分。";
   return "";
 }
 
@@ -717,17 +717,17 @@ export function ProfileChartsSection({
         <h3 className="text-sm font-semibold text-[var(--color-ink)]">
           {data
             ? profileCompletionTitle(data.dailyChartMode, pl)
-            : `完成項次（個人·${pl}）`}
+            : `分數表（個人·${pl}）`}
         </h3>
         <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
           {data
             ? profileCompletionSubtitle(data.dailyChartMode)
-            : "與全體榜「完成項次」粒度一致；載入中…"}
+            : "與全體榜「分數表」粒度一致；載入中…"}
         </p>
         <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
           <div className="flex min-h-[160px] w-full min-w-0 flex-col justify-end">
             {data ? (
-              <GlobalDailyCompletionBars points={data.dailyCompletions} />
+              <GlobalDailyCompletionBars points={data.dailyScores} />
             ) : (
               <Skeleton className="h-52 w-full rounded-xl" />
             )}

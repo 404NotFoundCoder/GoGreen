@@ -282,7 +282,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### 分數（排行榜與每日統計）
 
-- 每日 `user_daily_stats.raw_score` 為當日各完成項 points 加總；**排行榜「分數」維度**為所選期間內**加總**（與個人紀錄一致）；介面統稱「分數」，不稱「原始分」。
+- 每日 `user_daily_stats.raw_score` 為當日各完成項 points 加總；**排行榜「分數」維度**為所選期間內**加總**（與個人紀錄一致）。**主列表與統計卡**用語統稱「**分數**」。**總加權專區「分數表」折線圖**之數值為 `raw_score` 之按日／按段彙總，副標與 tooltip 以「**分**」「原始分加總」等與資料欄位對齊，避免與「完成次數」混淆。
 - 舊版「標準化分」已不再作為排行榜排序依據；若需完成率語意請參考打卡與模板設定，不在此重複。
 
 ### Streak Tier 加成
@@ -333,9 +333,9 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 - 所有使用者公開姓名，無隱私選項
 - 主列表每頁最多 `LEADERBOARD_LIMIT` 筆（**20**），超過則「上一頁／下一頁」分頁；**名次為全榜名次**（第 2 頁仍顯示第 21 名起）
 - **成員頭像**：全體榜與群組內榜**主列表**、以及群組內「**各成員完成項數**」列，優先顯示 **`public.users.photo_url`**（Google 等 OAuth 寫入之頭像 URL）；`lib/supabase/leaderboard.ts` 以 **`fetchUserProfileMap()`**（`select id, nickname, photo_url`）與榜單聚合一併載入，**`UserPeriodAgg.photoUrl`** 供 `LeaderboardShell`／`LeaderboardViz` 使用。無 URL 時維持暱稱首字圓形佔位。
-- **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；**完成項次柱狀、SDG 分布、公版／自訂行動完成率＋密度圖**僅在子 tab **「總加權」**時載入與顯示（`useGlobalLeaderboardCharts(..., includeWeightedCharts)`）；其餘子 tab 仍載入四格統計卡所需之 **`topByScore`／`topBySdg`／`topHotAction`**（較輕量）。**即時更新**：主列表與完成項次／SDG 圖表之 hook 監聽 **`user_daily_stats`**（打卡後通常會刷新 stats）；**`GlobalActionCompletionSection`** 另由 **`useGlobalActionCompletionStats`** 監聽 **`daily_checkins`、`user_daily_custom_items`、`user_daily_stats`**（見 [Realtime 規範](#realtime-規範)）。統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
+- **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；**分數表（折線圖）、SDG 分布、公版／自訂行動完成率＋密度圖**僅在子 tab **「總加權」**時載入與顯示（`useGlobalLeaderboardCharts(..., includeWeightedCharts)`）；其餘子 tab 仍載入四格統計卡所需之 **`topByScore`／`topBySdg`／`topHotAction`**（較輕量）。**即時更新**：主列表與分數表／SDG 圖表之 hook 監聽 **`user_daily_stats`**（打卡後通常會刷新 stats）；**`GlobalActionCompletionSection`** 另由 **`useGlobalActionCompletionStats`** 監聽 **`daily_checkins`、`user_daily_custom_items`、`user_daily_stats`**（見 [Realtime 規範](#realtime-規範)）。統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
 - 統計面板：參與人數、**分數最高**、**SDG 覆蓋最高**（副標 **`N=…（相異）+ M=…（單日最多）＝合計`**）、**熱門行動（第 1 名，打卡次數）**；皆標註所選期間 `[done]`
-- **總加權**專區圖表：**完成項次**柱狀卡為 **白底**（`bg-[var(--color-white)]`），與 SDG 分布卡區隔；SDG 行動分布（佔總次數 %）。
+- **總加權**專區圖表：**分數表**（`GlobalDailyCompletionBars`，**SVG 折線＋面積**）與 **SDG 行動分布**兩卡皆 **白底**（`bg-[var(--color-white)]`）。**分數表**資料為圖表範圍內使用者之 **`raw_score` 按日／按段加總**（`leaderboardAnalytics.aggregateFromStats`）；**SDG 行動分布**為打卡列 SDG 計次占比；標籤為 **`SDG n`＋中文名** 藥丸（`SDG_COLORS` 淡底深字）；進度條軌道為 **`--color-surface`**，填色為各 SDG 主色。
 - **`GlobalActionCompletionSection`**（公版項目／自訂標題完成率＋密度圖）：
   - **期間列**：**今日／本週／本月／自訂** 四欄 **等寬** 同一膠囊列（**自訂**＝日曆圖示＋「自訂」＋ chevron **同一橫列**）。選 **自訂** 且已套用區間時，該欄為**整格淺綠**選中態（無「使用中」小徽章）。
   - **自訂區間**：點第四欄開啟 **`DateRangePickerPanel`**（雙月曆、**拖曳**選起訖；`components/ui/DateRangePickerPanel.tsx`）。面板為 **`absolute` 浮層**（錨在期間列容器內），**不推擠**下方完成率列表。套用後 **`useGlobalActionCompletionStats({ start, end })`**，密度圖版面依 **`resolveHeatmapLayoutForDateRange`**（短區間橫向日格、長區間 GitHub 週欄）。
@@ -350,7 +350,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`（以 `group_members` **全體成員**為準，無打卡者仍列入 0 分）、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
 - 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）
-- 圖表：**本群**每日完成項次、**本群** SDG 行動分布（`rpc_group_sdg_distribution`）**僅在子 tab「總加權」顯示**；**各成員完成項數橫條**（`GroupMemberCountBars`）仍於各子 tab 顯示 `[done]`（需 `20260321230100_group_sdg_distribution_rpc.sql`）
+- 圖表：**本群**每日**分數表**（折線，成員 **`raw_score` 按日加總**）、**本群** SDG 行動分布（`rpc_group_sdg_distribution`）**僅在子 tab「總加權」顯示**；圖表區第一卡目前為 **`bg-[var(--color-surface)]`**、SDG 卡為白底（與全體榜第一卡皆白底略異，可再統一）。**各成員完成項數橫條**（`GroupMemberCountBars`）仍於各子 tab 顯示 `[done]`（需 `20260321230100_group_sdg_distribution_rpc.sql`）
 - 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
 ### 群組 vs 群組 `[done]`
@@ -362,7 +362,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 ### 個人記錄 `[部分完成]`
 
-> **`/profile`**：暱稱（點筆編輯）`[done]`；**分析區**為 `ProfileAnalyticsShell`：`LeaderboardPeriodBar` 選期間 → `ProfileLeaderboardSummary`（我的排行摘要）→ `ProfileChartsSection`（打卡密度／完成項次／SDG）→ `ProfileDailyStats`（近 14 天 `user_daily_stats` 原始值表格）`[done]`。**本週／本月**與排行榜期間一致；選 **「至今」** 時，圖表／熱力等為 **今年 1/1～今日**（`getYearStartString`～`getTodayString`），與全體榜「至今」累計區間不同；「我的排行摘要」仍依榜單「至今」邏輯。
+> **`/profile`**：暱稱（點筆編輯）`[done]`；**分析區**為 `ProfileAnalyticsShell`：`LeaderboardPeriodBar` 選期間 → `ProfileLeaderboardSummary`（我的排行摘要）→ `ProfileChartsSection`（打卡密度／**分數表**／SDG）→ `ProfileDailyStats`（近 14 天 `user_daily_stats` 原始值表格）`[done]`。**本週／本月**與排行榜期間一致；選 **「至今」** 時，圖表／熱力等為 **今年 1/1～今日**（`getYearStartString`～`getTodayString`），與全體榜「至今」累計區間不同；「我的排行摘要」仍依榜單「至今」邏輯。`ProfileAnalyticsShell` 頂部說明已改稱「分數表」而非「完成項次」。
 
 - **`/leaderboard`「個人」視角** `[done]`：`fetchPersonalLeaderboardSnapshot` — 全體／群組內四維度名次表、期間分數加總、期間最佳單日 streak、平均標準化分與完成／SDG；引導至個人資料看近況表
 - 統計數字全部顯示**原始值**，不標準化（與榜單標準化分並存於不同區塊）
@@ -372,8 +372,8 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
   - **Hover／tooltip（全期間共用）**：`M/d · N 項完成 · 分`（`raw_score`）；未打卡為 `0 項完成 · 0 分`；未來日為「尚未到達」。以原生 `title` 呈現（行動裝置可無 hover，仍可靠長按或無障礙朗讀延伸）。
   - **本週**：橫向 **七日卡**（週一～週日），每卡僅顯示 **完成項數（N 項）**，不顯示分數；**今日**以 **inset ring**（或等效內縮強調）標示，**勿**用 `ring-offset` 疊在橫向捲動邊緣（易裁切破圖）；**未來日期**為留白卡＋「·」。色階同上五階。
   - **本月**：**月曆格**（七欄對齊週一～週日）；**星期列與日期格必須共用全寬**（同一 `grid-cols-7`＋`minmax(0,1fr)`，**禁止**僅對下方格子設 `max-w` 而表頭全寬，否則會跑版）；格內顯示 **N 項**（0 項留白），色階同上五階。
-  - **至今**（個人頁）：後端統計區間仍為 **今年 1/1～今日**（與完成項次／SDG 一致）；**熱力圖**則繪製 **今年完整 1/1～12/31** 之曆週欄（`getYearStartString`～`getYearEndString`），未來日空白；**GitHub 貢獻圖式**小方格（欄＝曆週、列＝週一～週日，`gap-px`）；**桌面**（`md+`）熱力區與摘要卡**同寬**（週欄 `flex-1`、格 `aspect-square`）；**手機**（`&lt;md`）週欄固定 **`w-3`**、整段 **`overflow-x-auto`** 可橫向滑動，避免擠壓跑版；**頂列橫向標示月份（M 月）**；方格**不**顯示項數。
-- **完成項次**（柱狀，`GlobalDailyCompletionBars`）：個人期間內每日／四週／月等粒度與全體榜同構，**不**另含「每日原始分趨勢」圖。
+  - **至今**（個人頁）：後端統計區間仍為 **今年 1/1～今日**（與**分數表**／SDG 一致）；**熱力圖**則繪製 **今年完整 1/1～12/31** 之曆週欄（`getYearStartString`～`getYearEndString`），未來日空白；**GitHub 貢獻圖式**小方格（欄＝曆週、列＝週一～週日，`gap-px`）；**桌面**（`md+`）熱力區與摘要卡**同寬**（週欄 `flex-1`、格 `aspect-square`）；**手機**（`&lt;md`）週欄固定 **`w-3`**、整段 **`overflow-x-auto`** 可橫向滑動，避免擠壓跑版；**頂列橫向標示月份（M 月）**；方格**不**顯示項數。
+- **分數表**（`GlobalDailyCompletionBars`）：與全體榜**同粒度規則**（`buildCompletionChartSeries`／`DailyChartMode`），圖表為 **SVG 平滑折線＋面積**；個人資料來源為 **`fetchUserProfileCharts` → `dailyScores`**（單日 **`raw_score`**）。後端仍另建 **`dailyCompletions`**（`completed_count` 系列）供他處擴充，**個人頁折線不讀該序列**。X 軸曆日以 **`M/d`**；圖寬依容器 **`ResizeObserver`** 填滿（點多時最小點距可橫向捲動）。
 - 個人 **SDG 行動分布**（長條圖）`[done]`（`rpc_my_sdg_distribution`）
 - Streak 紀錄（**目前連續**／**歷史最長**並列於個人專區）`[planned]`（現僅於榜單「個人」視角顯示**期間內**最佳單日 streak；近 14 天表可側面參考）
 
@@ -900,7 +900,7 @@ alter publication supabase_realtime add table user_daily_custom_items;
 
 | 視角         | 監聽的表                             | 說明                       |
 | ------------ | ------------------------------------ | -------------------------- |
-| 全體排行榜   | `user_daily_stats`                   | 主列表與完成項次／SDG 圖表：分數與彙總變動即觸發 |
+| 全體排行榜   | `user_daily_stats`                   | 主列表與**分數表**／SDG 圖表：`raw_score` 等彙總變動即觸發 |
 | 全體 · 行動完成率區 | `daily_checkins`、`user_daily_custom_items`、`user_daily_stats` | `useGlobalActionCompletionStats`：公版／自訂完成率與密度名單與資料一致 |
 | 群組內排行榜 | `user_daily_stats`                   | 成員分數變動即觸發（實作與上表對齊；`daily_checkins` 可另增以縮短觸發路徑） |
 | 群組 vs 群組 | `user_daily_stats`                   | 群組平均分即時更新         |
@@ -1109,7 +1109,7 @@ Tailwind 預設斷點，統一使用，不自訂：
 | ----------- | -------------------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
 | 主導航      | 底部 tab bar                                                                     | 底部 tab bar     | 左側 sidebar                             |
 | 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]` |
-| 排行榜      | 全寬列表                                                                         | 全寬列表         | **全體**：統計卡四格＋列表；**總加權**時再加圖表區（完成項次／SDG／行動密度，**lg: 雙欄**）；**各群間**：四格統計卡（xl 四欄）＋列表，無橫條圖 `[done]` |
+| 排行榜      | 全寬列表                                                                         | 全寬列表         | **全體**：統計卡四格＋列表；**總加權**時再加圖表區（**分數表折線**／SDG／行動密度，**lg: 雙欄**）；**各群間**：四格統計卡（xl 四欄）＋列表，無橫條圖 `[done]` |
 | 統計圖表    | 全寬                                                                             | 全寬             | 並排顯示（與上欄對齊）`[done]`             |
 
 ### 觸控規範（手機 / 平板）
@@ -1293,15 +1293,22 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ---
 
+### [2026-03-22] v0.10.43 — 分數表折線、原始分彙總、`INSTRUCTIONS` 對齊
+
+- `[FEAT]` **分數表**：`GlobalDailyCompletionBars` 改 **SVG 折線＋面積**；全體／本群 **`aggregateFromStats`** 按日加總 **`raw_score`**（回傳欄位名仍為 `dailyCompletions`，型別註解標明語意）；個人頁改餵 **`dailyScores`**
+- `[FEAT]` 圖表寬度 **`ResizeObserver`** 填滿卡片；X 軸 **`M/d`**、每日標籤；文案與 tooltip 統一「**分**」，副標說明「原始分加總」
+- `[FEAT]` SDG 行動分布：**白底卡**、藥丸 **`SDG n`＋中文**、軌道 **`--color-surface`**
+- `[DOCS]` 本文件：排行榜／個人記錄／Realtime／Layout 表與「分數」維度用語區隔；**v0.10.29** 條目曾記「移除每日分數折線」為當時狀態，現已以分數表折線與 **`raw_score`** 彙總實作
+
 ### [2026-03-22] v0.10.42 — 排行榜頭像、完成率日期浮層、文件對齊
 
 - `[FEAT]` **`UserPeriodAgg.photoUrl`**：榜單聚合改 **`fetchUserProfileMap`**（`users.nickname` + **`photo_url`**）；**全體／群組內主列表**與 **`GroupMemberCountBars`** 有 URL 則顯示圓形頭像（`referrerPolicy="no-referrer"`），否則暱稱首字
 - `[FIX]` **`GlobalActionCompletionSection`**：**自訂**欄圖示與文字改 **橫排**；日期區間面板改 **`absolute` 浮層**，避免推擠下方版面；自訂選中態移除額外 **ring**（與其他欄視覺一致）
 - `[DOCS]` 「全體排行榜」補頭像與 **`GlobalActionCompletionSection`**（四欄、浮層月曆、SDG、完成者 **`avatar_url` 選用 migration**）；RPC 表補 **`20260322150000`**、**`20260322163000`**
 
-### [2026-03-22] v0.10.41 — 完成項次白底、各項完成率獨立期間
+### [2026-03-22] v0.10.41 — 總加權圖表卡白底、各項完成率獨立期間
 
-- `[FEAT]` 全體榜「完成項次」柱狀卡改 **白底**；**`GlobalActionCompletionSection`** 內建 **今日／本週／本月** 選擇器（**`ActionCompletionPeriod`**，與頁面頂部榜單期間分離），RPC／密度圖依 **`getActionCompletionDateBounds`**、**`resolveHeatmapLayoutForActionCompletion`**；`leaderboardActionHeatmap` 增 `*ForRange` 與舊 **`LeaderboardPeriod`** 包裝並存；**`useGlobalActionCompletionStats`** 改接 **`ActionCompletionPeriod`**
+- `[FEAT]` 全體榜總加權專區第一圖表卡改 **白底**（後續 v0.10.43 該卡定名「**分數表**」並改折線圖）；**`GlobalActionCompletionSection`** 內建 **今日／本週／本月** 選擇器（**`ActionCompletionPeriod`**，與頁面頂部榜單期間分離），RPC／密度圖依 **`getActionCompletionDateBounds`**、**`resolveHeatmapLayoutForActionCompletion`**；`leaderboardActionHeatmap` 增 `*ForRange` 與舊 **`LeaderboardPeriod`** 包裝並存；**`useGlobalActionCompletionStats`** 改接 **`ActionCompletionPeriod`**
 - `[DOCS]` 全體排行榜「總加權圖表」小節與 Changelog
 
 ### [2026-03-22] v0.10.40 — 行動完成率 Realtime、自訂列含「僅列入」
@@ -1321,7 +1328,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 ### [2026-03-22] v0.10.38 — 總加權專屬圖表區、行動密度、SDG 卡拆解
 
 - `[FEAT]` 全體統計卡：SDG 覆蓋最高副標改 **`N=…（相異）+ M=…（單日最多）＝合計`**；熱門行動改 **`rpc_global_hot_actions` 僅取第 1 名**（`topHotAction`）
-- `[FEAT]` **完成項次／SDG 分布／行動完成率＋密度圖**僅在 **「總加權」**子 Tab 顯示；`fetchGlobalLeaderboardCharts`／`fetchGroupLeaderboardCharts` 支援 **`includeWeightedCharts`**
+- `[FEAT]` **每日完成柱狀／SDG 分布／行動完成率＋密度圖**僅在 **「總加權」**子 Tab 顯示（柱狀後續於 v0.10.43 改為**分數表折線**）；`fetchGlobalLeaderboardCharts`／`fetchGroupLeaderboardCharts` 支援 **`includeWeightedCharts`**
 - `[FEAT]` 移除熱門行動 Top 5 表；改 **`GlobalActionCompletionSection`**（公版＋自訂標題、展開 GitHub／月曆／週視圖密度、點格彈窗＋佐證圖／照片牆）；**`lib/utils/heatmapLayout.ts`** 共用版面
 - `[DB]` **`20260322123000_leaderboard_action_density_rpcs.sql`**（與 `20260322120000_leaderboard_group_members_rpc.sql` 檔名區隔）
 - `[DOCS]` 全體／群組內排行榜小節、RPC 表、Layout 表、Changelog
@@ -1337,7 +1344,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 - `[FEAT]` 全體／群組內／各群間主列表：`pageRankedUsers`／`pageRankedGroups`；`fetch*` 回傳 `page`／`pageSize`／`totalPages`；`LeaderboardShell` 分頁列與觸控友善按鈕
 - `[FEAT]` 各群間：統計卡 `topAvgRaw`／`topSdg` 與全榜一致（後續 v0.10.37 改四卡並移除橫條圖）
-- `[FEAT]` 群組內：`memberBarRows`（完成項次前 12）供小圖，與主列表分頁無關
+- `[FEAT]` 群組內：`memberBarRows`（**完成項數**前 12）供小圖，與主列表分頁無關
 - `[DOCS]` `LEADERBOARD_LIMIT` 語意、排行榜設計一句與本 Changelog
 
 ### [2026-03-22] v0.10.35 — 群組榜在 RLS 下讀齊成員（RPC）
@@ -1381,7 +1388,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 ### [2026-03-21] v0.10.29 — 個人打卡密度 UI 與文件
 
 - `[FEAT]` `ProfileChartsSection`：本週改為 **七日卡**（僅 **N 項**）；本月為 **月曆格**（格內顯示項數）；至今為 **GitHub 式小格**＋**頂列月份標籤**（格內不顯示項數）；共用色階圖例
-- `[DOCS]` `INSTRUCTIONS.md`：路由／認證／**個人記錄**與 `/profile` 圖表規格與實作對齊；移除已不存在的「每日分數趨勢（折線）」描述
+- `[DOCS]` `INSTRUCTIONS.md`：路由／認證／**個人記錄**與 `/profile` 圖表規格與實作對齊；當時移除獨立「每日分數折線」區塊之描述（後續 **v0.10.43** 以總加權／個人 **分數表** 折線與 **`raw_score`** 彙總回補）
 
 ### [2026-03-21] v0.10.28 — 排行榜章節狀態標示對齊實作
 
@@ -1391,7 +1398,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 - `[DB]` migration `20260321220000`：`rpc_global_sdg_distribution`、`rpc_global_hot_actions`、`rpc_my_sdg_distribution`（SECURITY DEFINER）
 - `[FEAT]` `lib/supabase/leaderboardAnalytics`、`leaderboardPeriod`；`fetchGroupPeriodStats`；`fetchUserDailyStatsInRange`；`LeaderboardViz`；`ProfileChartsSection`；`useGlobalLeaderboardCharts`、`useGroupPeriodStats`
-- `[FEAT]` 全體：統計四格、每日完成柱狀、SDG 分布、熱門行動（後續 v0.10.38 改總加權專屬圖表區與行動密度）；群組內／各群間補齊統計與橫條圖
+- `[FEAT]` 全體：統計四格、每日完成柱狀、SDG 分布、熱門行動（後續 v0.10.38 改總加權專屬圖表區與行動密度；v0.10.43 柱狀改**分數表折線**與 **`raw_score`** 彙總）；群組內／各群間補齊統計與橫條圖
 - `[DOCS]` 「排行榜設計」、UI/UX Layout、`lib/supabase` 說明與本 Changelog
 
 ### [2026-03-21] v0.10.26 — 排行榜四視角（全體／群組內／各群間／個人）

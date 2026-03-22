@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  applicationName: "GoGreen",
   title: "GoGreen",
   description: "每天一點永續行動 — SDG 每日檢核",
   manifest: "/manifest.json",
@@ -23,6 +24,14 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "default",
     title: "GoGreen",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/logo-leaf.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
 };
 

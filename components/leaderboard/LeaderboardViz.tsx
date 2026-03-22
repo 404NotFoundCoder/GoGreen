@@ -6,6 +6,8 @@ import type { DailyCompletionPoint } from "@/lib/supabase/leaderboardAnalytics";
 import type { RankedRow } from "@/lib/utils/leaderboard";
 
 const CHART_INNER_PX = 112;
+/** 每欄最小寬度：避免窄螢幕 flex 擠成單一可見色塊，並在點位多時改以橫向捲動閱讀 */
+const BAR_COL_MIN_PX = 24;
 
 export function GlobalDailyCompletionBars({
   points,
@@ -21,10 +23,11 @@ export function GlobalDailyCompletionBars({
       <p className="text-sm text-[var(--color-subtle)]">此期間尚無完成資料。</p>
     );
   }
+  const minChartWidth = `max(100%, ${points.length * BAR_COL_MIN_PX}px)`;
   return (
     <div
-      className="flex w-full items-end gap-px sm:gap-1"
-      style={{ height: CHART_INNER_PX }}
+      className="flex w-full min-w-0 items-end justify-start gap-px sm:gap-1"
+      style={{ height: CHART_INNER_PX, minWidth: minChartWidth }}
     >
       {points.map((p) => {
         const isZero = p.total <= 0;
@@ -37,7 +40,7 @@ export function GlobalDailyCompletionBars({
         return (
           <div
             key={p.date}
-            className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+            className="flex min-w-[20px] flex-1 shrink-0 flex-col items-center justify-end gap-1"
           >
             <div
               className={
@@ -114,35 +117,6 @@ export function SdgDistributionBars({
   );
 }
 
-export function HotActionsList({
-  items,
-}: {
-  items: { label: string; count: number }[];
-}) {
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-[var(--color-subtle)]">尚無熱門行動資料。</p>
-    );
-  }
-  return (
-    <ol className="space-y-2">
-      {items.map((it, i) => (
-        <li
-          key={`${it.label}-${i}`}
-          className="flex items-center justify-between gap-2 rounded-xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-white)]/70 px-3 py-2 text-sm"
-        >
-          <span className="min-w-0 truncate font-medium text-[var(--color-ink)]">
-            {i + 1}. {it.label}
-          </span>
-          <span className="shrink-0 tabular-nums text-[var(--color-ink-secondary)]">
-            {it.count} 次
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 export function GroupMemberCountBars({ rows }: { rows: RankedRow[] }) {
   const list = rows.slice(0, 12);
   const max = Math.max(1, ...list.map((r) => r.totalCompleted));
@@ -150,22 +124,29 @@ export function GroupMemberCountBars({ rows }: { rows: RankedRow[] }) {
   return (
     <div className="space-y-2">
       {list.map((r) => (
-        <div key={r.userId} className="flex items-center gap-2 text-sm">
-          <div className="flex w-7 shrink-0 items-center justify-center">
-            <RankMark rank={r.rank} size="sm" />
+        <div
+          key={r.userId}
+          className="flex items-center justify-between gap-2 text-sm sm:gap-3"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex w-7 shrink-0 items-center justify-center">
+              <RankMark rank={r.rank} size="sm" />
+            </div>
+            <span className="min-w-0 truncate text-[var(--color-ink)]">
+              {r.nickname}
+            </span>
           </div>
-          <span className="min-w-0 flex-1 truncate text-[var(--color-ink)]">
-            {r.nickname}
-          </span>
-          <div className="hidden h-2 w-28 overflow-hidden rounded-full bg-[var(--color-white)] sm:block">
-            <div
-              className="h-full rounded-full bg-[var(--color-primary-pale)]"
-              style={{ width: `${(r.totalCompleted / max) * 100}%` }}
-            />
+          <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+            <div className="hidden h-2 w-28 overflow-hidden rounded-full bg-[var(--color-white)] sm:block">
+              <div
+                className="h-full rounded-full bg-[var(--color-primary-pale)]"
+                style={{ width: `${(r.totalCompleted / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-12 text-right tabular-nums text-[var(--color-ink-secondary)]">
+              {r.totalCompleted} 項
+            </span>
           </div>
-          <span className="w-12 shrink-0 text-right tabular-nums text-[var(--color-ink-secondary)]">
-            {r.totalCompleted} 項
-          </span>
         </div>
       ))}
     </div>

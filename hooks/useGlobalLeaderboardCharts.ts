@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 export function useGlobalLeaderboardCharts(
   period: LeaderboardPeriod,
   enabled: boolean,
+  includeWeightedCharts: boolean,
 ) {
   const { user } = useAuthContext();
   const [data, setData] = useState<Awaited<
@@ -27,7 +28,9 @@ export function useGlobalLeaderboardCharts(
       if (!opts?.silent) setLoading(true);
       setError(null);
       try {
-        const result = await fetchGlobalLeaderboardCharts(period);
+        const result = await fetchGlobalLeaderboardCharts(period, {
+          includeWeightedCharts,
+        });
         setData(result);
       } catch (e) {
         setError(e instanceof Error ? e : new Error(String(e)));
@@ -35,7 +38,7 @@ export function useGlobalLeaderboardCharts(
         if (!opts?.silent) setLoading(false);
       }
     },
-    [period, enabled],
+    [period, enabled, includeWeightedCharts],
   );
 
   useEffect(() => {

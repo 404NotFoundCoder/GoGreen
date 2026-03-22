@@ -10,6 +10,7 @@ export function useGroupLeaderboardCharts(
   period: LeaderboardPeriod,
   enabled: boolean,
   groupId: string | null,
+  includeWeightedCharts: boolean,
 ) {
   const { user } = useAuthContext();
   const [data, setData] = useState<Awaited<
@@ -28,7 +29,9 @@ export function useGroupLeaderboardCharts(
       if (!opts?.silent) setLoading(true);
       setError(null);
       try {
-        const result = await fetchGroupLeaderboardCharts(groupId, period);
+        const result = await fetchGroupLeaderboardCharts(groupId, period, {
+          includeWeightedCharts,
+        });
         setData(result);
       } catch (e) {
         setError(e instanceof Error ? e : new Error(String(e)));
@@ -36,7 +39,7 @@ export function useGroupLeaderboardCharts(
         if (!opts?.silent) setLoading(false);
       }
     },
-    [period, enabled, groupId],
+    [period, enabled, groupId, includeWeightedCharts],
   );
 
   useEffect(() => {

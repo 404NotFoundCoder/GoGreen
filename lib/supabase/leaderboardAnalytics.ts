@@ -1,15 +1,11 @@
-import {
-  addMonths,
-  endOfMonth,
-  parseISO,
-  startOfMonth,
-} from "date-fns";
+import { addMonths, endOfMonth, parseISO, startOfMonth } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { createClient } from "@/lib/supabase/client";
 import { TIMEZONE } from "@/constants/config";
 import {
   fetchGroupMemberIds,
   fetchLeaderboardDailyStatsForPeriod,
+  fetchLeaderboardStatsAndUserAggregates,
   type LeaderboardDailyStatRow,
 } from "@/lib/supabase/leaderboard";
 import type { DailyStatRow } from "@/lib/supabase/stats";
@@ -21,7 +17,12 @@ import {
   weekCalendarDayStringsContaining,
 } from "@/lib/utils/date";
 import { getLeaderboardDateBounds } from "@/lib/utils/leaderboardPeriod";
-import type { LeaderboardPeriod } from "@/lib/utils/leaderboard";
+import {
+  computeWeightedRanks,
+  rankAllUsers,
+  sdgRankSum,
+  type LeaderboardPeriod,
+} from "@/lib/utils/leaderboard";
 
 export type DailyCompletionPoint = {
   date: string;
@@ -40,10 +41,20 @@ export type DailyChartMode =
 export type GlobalLeaderboardChartsData = {
   totalCompletions: number;
   usersWithFullSdgCoverage: number;
+  /** 全體：期間內原始分加總最高者（與「分數」維度榜第 1 名一致）；群組圖表為 null */
+  topByScore: { nickname: string; totalRawScore: number } | null;
+  /** 全體：期間內 SDG 指標 N+M 最高者（與「SDG 覆蓋」維度榜第 1 名一致）；群組圖表為 null */
+  topBySdg: {
+    nickname: string;
+    sdgMetric: number;
+    sdgUnionCount: number;
+    maxSdgCoverage: number;
+  } | null;
   dailyCompletions: DailyCompletionPoint[];
   dailyChartMode: DailyChartMode;
   sdgDistribution: { sdgId: number; count: number }[];
-  hotActions: { label: string; count: number }[];
+  /** 全體統計卡「熱門行動」第 1 名；未載入時 null */
+  topHotAction: { label: string; count: number } | null;
 };
 
 export function getDailyChartBounds(
@@ -114,8 +125,7 @@ function buildCumulativeAdaptive(
     return {
       points: weekDays.map((d) => ({
         date: d,
-        total:
-          d >= rangeStart && d <= rangeEnd ? (dailyMap.get(d) ?? 0) : 0,
+        total: d >= rangeStart && d <= rangeEnd ? (dailyMap.get(d) ?? 0) : 0,
         label: d.slice(5),
       })),
       mode: "all_daily",
@@ -230,7 +240,9 @@ export function buildCompletionChartSeries(
     };
   }
   if (period === "month") {
-    const monthEnd = getMonthEndString(parseISO(`${monthStartForBounds}T12:00:00`));
+    const monthEnd = getMonthEndString(
+      parseISO(`${monthStartForBounds}T12:00:00`),
+    );
     const rangeEnd = chartEnd < monthEnd ? chartEnd : monthEnd;
     return {
       points: buildMonthFourSegments(monthStartForBounds, rangeEnd, dailyMap),
@@ -306,13 +318,62 @@ function aggregateFromStats(
 
 export async function fetchGlobalLeaderboardCharts(
   period: LeaderboardPeriod,
+  options?: { includeWeightedCharts?: boolean },
 ): Promise<GlobalLeaderboardChartsData> {
-  const stats = await fetchLeaderboardDailyStatsForPeriod(period);
+  const includeWeighted = options?.includeWeightedCharts !== false;
   const { start, end } = getLeaderboardDateBounds(period);
-  const base = aggregateFromStats(stats, { period, defaultStart: start, end });
-
   const supabase = createClient();
-  const [sdgRes, hotRes] = await Promise.all([
+
+  if (!includeWeighted) {
+    const [{ users }, hotRes] = await Promise.all([
+      fetchLeaderboardStatsAndUserAggregates(period),
+      supabase.rpc("rpc_global_hot_actions", {
+        p_start: start,
+        p_end: end,
+        p_limit: 1,
+      }),
+    ]);
+    if (hotRes.error) throw hotRes.error;
+    const w = computeWeightedRanks(users);
+    const byScore = rankAllUsers(users, "score", w);
+    const bySdg = rankAllUsers(users, "sdg", w);
+    const topScoreRow = byScore[0];
+    const topSdgRow = bySdg[0];
+    const topByScore = topScoreRow
+      ? {
+          nickname: topScoreRow.nickname,
+          totalRawScore: Math.round(topScoreRow.totalRawScore),
+        }
+      : null;
+    const topBySdg = topSdgRow
+      ? {
+          nickname: topSdgRow.nickname,
+          sdgMetric: sdgRankSum(topSdgRow),
+          sdgUnionCount: topSdgRow.sdgUnionCount,
+          maxSdgCoverage: topSdgRow.maxSdgCoverage,
+        }
+      : null;
+    const hotRows = hotRes.data as
+      | { label: string; action_count: number | string }[]
+      | null;
+    const first = hotRows?.[0];
+    const topHotAction = first
+      ? { label: first.label, count: Number(first.action_count) }
+      : null;
+    return {
+      totalCompletions: 0,
+      usersWithFullSdgCoverage: 0,
+      topByScore,
+      topBySdg,
+      dailyCompletions: [],
+      dailyChartMode: "week_daily",
+      sdgDistribution: [],
+      topHotAction,
+    };
+  }
+
+  const [{ stats, users }, sdgRes, hotRes] = await Promise.all([
+    fetchLeaderboardStatsAndUserAggregates(period),
     supabase.rpc("rpc_global_sdg_distribution", {
       p_start: start,
       p_end: end,
@@ -320,12 +381,34 @@ export async function fetchGlobalLeaderboardCharts(
     supabase.rpc("rpc_global_hot_actions", {
       p_start: start,
       p_end: end,
-      p_limit: 5,
+      p_limit: 1,
     }),
   ]);
 
   if (sdgRes.error) throw sdgRes.error;
   if (hotRes.error) throw hotRes.error;
+
+  const base = aggregateFromStats(stats, { period, defaultStart: start, end });
+
+  const w = computeWeightedRanks(users);
+  const byScore = rankAllUsers(users, "score", w);
+  const bySdg = rankAllUsers(users, "sdg", w);
+  const topScoreRow = byScore[0];
+  const topSdgRow = bySdg[0];
+  const topByScore = topScoreRow
+    ? {
+        nickname: topScoreRow.nickname,
+        totalRawScore: Math.round(topScoreRow.totalRawScore),
+      }
+    : null;
+  const topBySdg = topSdgRow
+    ? {
+        nickname: topSdgRow.nickname,
+        sdgMetric: sdgRankSum(topSdgRow),
+        sdgUnionCount: topSdgRow.sdgUnionCount,
+        maxSdgCoverage: topSdgRow.maxSdgCoverage,
+      }
+    : null;
 
   const sdgRows = sdgRes.data as
     | { sdg_id: number; action_count: number | string }[]
@@ -338,22 +421,39 @@ export async function fetchGlobalLeaderboardCharts(
   const hotRows = hotRes.data as
     | { label: string; action_count: number | string }[]
     | null;
-  const hotActions = (hotRows ?? []).map((r) => ({
-    label: r.label,
-    count: Number(r.action_count),
-  }));
+  const firstHot = hotRows?.[0];
+  const topHotAction = firstHot
+    ? { label: firstHot.label, count: Number(firstHot.action_count) }
+    : null;
 
   return {
     ...base,
+    topByScore,
+    topBySdg,
     sdgDistribution,
-    hotActions,
+    topHotAction,
   };
 }
 
 export async function fetchGroupLeaderboardCharts(
   groupId: string,
   period: LeaderboardPeriod,
+  options?: { includeWeightedCharts?: boolean },
 ): Promise<GlobalLeaderboardChartsData> {
+  const includeWeighted = options?.includeWeightedCharts !== false;
+  if (!includeWeighted) {
+    return {
+      totalCompletions: 0,
+      usersWithFullSdgCoverage: 0,
+      topByScore: null,
+      topBySdg: null,
+      dailyCompletions: [],
+      dailyChartMode: "week_daily",
+      sdgDistribution: [],
+      topHotAction: null,
+    };
+  }
+
   const memberIds = await fetchGroupMemberIds(groupId);
   const stats = await fetchLeaderboardDailyStatsForPeriod(period);
   const { start, end } = getLeaderboardDateBounds(period);
@@ -366,21 +466,13 @@ export async function fetchGroupLeaderboardCharts(
   });
 
   const supabase = createClient();
-  const [sdgRes, hotRes] = await Promise.all([
-    supabase.rpc("rpc_group_sdg_distribution", {
-      p_group_id: groupId,
-      p_start: start,
-      p_end: end,
-    }),
-    supabase.rpc("rpc_global_hot_actions", {
-      p_start: start,
-      p_end: end,
-      p_limit: 5,
-    }),
-  ]);
+  const sdgRes = await supabase.rpc("rpc_group_sdg_distribution", {
+    p_group_id: groupId,
+    p_start: start,
+    p_end: end,
+  });
 
   if (sdgRes.error) throw sdgRes.error;
-  if (hotRes.error) throw hotRes.error;
 
   const sdgRows = sdgRes.data as
     | { sdg_id: number; action_count: number | string }[]
@@ -390,18 +482,12 @@ export async function fetchGroupLeaderboardCharts(
     count: Number(r.action_count),
   }));
 
-  const hotRows = hotRes.data as
-    | { label: string; action_count: number | string }[]
-    | null;
-  const hotActions = (hotRows ?? []).map((r) => ({
-    label: r.label,
-    count: Number(r.action_count),
-  }));
-
   return {
     ...base,
+    topByScore: null,
+    topBySdg: null,
     sdgDistribution,
-    hotActions,
+    topHotAction: null,
   };
 }
 
@@ -457,14 +543,8 @@ export async function fetchUserProfileCharts(
     streak: r.streak,
   }));
 
-  const bounds = getDailyChartBounds(
-    period,
-    fakeStats,
-    defaultStart,
-    end,
-  );
-  const chartStart =
-    period === "all" ? getYearStartString() : bounds.start;
+  const bounds = getDailyChartBounds(period, fakeStats, defaultStart, end);
+  const chartStart = period === "all" ? getYearStartString() : bounds.start;
   const chartEnd = period === "all" ? end : bounds.end;
 
   const completionMap = new Map<string, number>();
@@ -508,8 +588,6 @@ export async function fetchUserProfileCharts(
     chartStart,
     chartEnd,
     /** 供熱力圖：期間內有打卡之日的原始列 */
-    heatmapRows: rows.filter(
-      (r) => r.date >= chartStart && r.date <= chartEnd,
-    ),
+    heatmapRows: rows.filter((r) => r.date >= chartStart && r.date <= chartEnd),
   };
 }

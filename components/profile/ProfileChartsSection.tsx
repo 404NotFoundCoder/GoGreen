@@ -319,7 +319,9 @@ function GithubYearHeatmap({
   const n = weekCols.length;
   const weekdayRows = ["一", "", "三", "", "五", "", "日"] as const;
   const templateCols =
-    n === 0 ? "1.25rem" : (`1.25rem repeat(${n}, minmax(0.75rem, 1fr))` as const);
+    n === 0
+      ? "1.25rem"
+      : (`1.25rem repeat(${n}, minmax(12px, 1fr))` as const);
 
   const bodyCells = Array.from({ length: 7 }, (_, dayIdx) => {
     const left = (
@@ -351,14 +353,22 @@ function GithubYearHeatmap({
     return [left, ...cells];
   }).flat();
 
+  const gridWidthStyle =
+    n > 0
+      ? ({
+          width: `max(100%, calc(1.25rem + ${n} * 12px))`,
+        } as const)
+      : undefined;
+
   return (
     <div className="mt-3 w-full min-w-0 px-0.5">
-      <div className="w-full overflow-x-auto overflow-y-visible [-webkit-overflow-scrolling:touch] overscroll-x-contain pb-0.5 md:overflow-x-visible">
+      <div className="w-full overflow-x-auto overflow-y-visible [-webkit-overflow-scrolling:touch] overscroll-x-contain touch-pan-x pb-0.5 md:overflow-x-visible">
         <div
-          className="grid w-full min-w-0 gap-px pb-1"
+          className="grid min-w-full max-w-none gap-px pb-1"
           style={{
             gridTemplateColumns: templateCols,
             gridTemplateRows: "auto repeat(7, auto)",
+            ...gridWidthStyle,
           }}
         >
           <div style={{ gridColumn: 1, gridRow: 1 }} aria-hidden />
@@ -714,12 +724,14 @@ export function ProfileChartsSection({
             ? profileCompletionSubtitle(data.dailyChartMode)
             : "與全體榜「完成項次」粒度一致；載入中…"}
         </p>
-        <div className="mt-6 flex min-h-[200px] flex-col justify-end overflow-x-auto overflow-y-visible pb-2 pt-2">
-          {data ? (
-            <GlobalDailyCompletionBars points={data.dailyCompletions} />
-          ) : (
-            <Skeleton className="h-52 w-full rounded-xl" />
-          )}
+        <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
+          <div className="flex min-h-[160px] w-full min-w-0 flex-col justify-end">
+            {data ? (
+              <GlobalDailyCompletionBars points={data.dailyCompletions} />
+            ) : (
+              <Skeleton className="h-52 w-full rounded-xl" />
+            )}
+          </div>
         </div>
       </section>
 

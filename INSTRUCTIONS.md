@@ -182,7 +182,7 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 **對應程式：**
 
-- **Hooks（`hooks/`）**：`useTodayChecklist`、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`、`useProfile`（完整檔名見「分層職責說明」）
+- **Hooks（`hooks/`）**：`useTodayChecklist`、`useGlobalLeaderboard`、`useGlobalLeaderboardCharts`、`useGlobalActionCompletionStats`、`useGroupMemberLeaderboard`、`useGroupsLeaderboard`、`usePersonalLeaderboard`、`useGroupLeaderboardCharts`、`useGroupPeriodStats`、`useGroups`、`useProfile`（完整檔名見「分層職責說明」）
 - **Supabase 封裝（`lib/supabase/`）**：`client.ts`（瀏覽器）、`server.ts`（伺服器）、`checklist.ts`、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
 
 ---
@@ -332,15 +332,18 @@ GoGreen 使用兩組互補的橄欖綠 / 大地色系，整合成一套完整設
 
 - 所有使用者公開姓名，無隱私選項
 - 主列表每頁最多 `LEADERBOARD_LIMIT` 筆（**20**），超過則「上一頁／下一頁」分頁；**名次為全榜名次**（第 2 頁仍顯示第 21 名起）
-- **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；圖表與統計子區塊由 `LeaderboardViz` 等組合；Realtime `user_daily_stats`；統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
-- 統計面板：參與人數、完成項次加總、9+ SDG 覆蓋人數、熱門行動等皆標註所選期間 `[done]`
-- 圖表：完成項次柱狀（本週每日／本月四週／至今依資料跨度自動：未滿一週補齊曆週 7 日→8～31 天四週→32 天～一年按月→逾年按年）；SDG 行動分布（佔總次數 %）；熱門行動 Top 5；migration 見 `rpc_global_*`
+- **前端**：`/leaderboard` 主視角 **全體**；**期間**由 `LeaderboardPeriodBar`（本週／本月／至今）與四子 tab（總加權／分數／Streak Tier 加成／SDG 覆蓋）；**完成項次柱狀、SDG 分布、公版／自訂行動完成率＋密度圖**僅在子 tab **「總加權」**時載入與顯示（`useGlobalLeaderboardCharts(..., includeWeightedCharts)`）；其餘子 tab 仍載入四格統計卡所需之 **`topByScore`／`topBySdg`／`topHotAction`**（較輕量）。**即時更新**：主列表與完成項次／SDG 圖表之 hook 監聽 **`user_daily_stats`**（打卡後通常會刷新 stats）；**`GlobalActionCompletionSection`** 另由 **`useGlobalActionCompletionStats`** 監聽 **`daily_checkins`、`user_daily_custom_items`、`user_daily_stats`**（見 [Realtime 規範](#realtime-規範)）。統計卡標題帶入所選期間；**排序依據旁與每列副文案**依子 Tab 說明；總加權列可顯示三維線性積分拆解（例 3+3+3）
+- 統計面板：參與人數、**分數最高**、**SDG 覆蓋最高**（副標 **`N=…（相異）+ M=…（單日最多）＝合計`**）、**熱門行動（第 1 名，打卡次數）**；皆標註所選期間 `[done]`
+- **總加權**專區圖表：完成項次柱狀（粒度同前）；SDG 行動分布（佔總次數 %）；**`GlobalActionCompletionSection`**——公版項目／自訂標題之完成率列表（點開展開與「我的」相同時間粒度之**密度圖**，色階依該日完成**人次**；點格彈窗列出完成者、佐證照片清單／照片牆）。基礎 migration：`rpc_global_*`、**`20260322123000_leaderboard_action_density_rpcs.sql`**；另見下項補充與 **`20260322140000_resync_default_checklist.sql`**／**`20260322141000_custom_title_stats_list_days.sql`**／**`20260322142000_custom_title_stats_include_list_only.sql`**。
+- **行動完成率公式與「自訂 · 依標題彙總」**：
+  - **公版**：完成率＝打卡人次 ÷（區間天數 × 期間內曾打卡人數）× 100%；項目來自 `is_default` 範本。若 DB 與 seed 文案／筆數脫節（例如曾手動改表、`on conflict do nothing` 未覆寫），可執行 **`20260322140000_resync_default_checklist.sql`** 還原 10 筆 canonical 並收斂單一預設範本。
+  - **自訂**：完成率＝該標題之 **打卡次數** ÷ **列入今日清單人日數**（`user_daily_custom_items` 依 `custom_items.title` 彙總之列數）× 100%；須 **`20260322141000_custom_title_stats_list_days.sql`**。**列入清單但該期間尚無打卡**之標題仍會出現一列（完成率 0%），見 **`20260322142000_custom_title_stats_include_list_only.sql`**。**彙總鍵為標題字串**：`custom_item_id` 不同只要 **title 完全相同** 就併成榜上一列（全體跨使用者加總）。**範例**：使用者 A 的「帶環保杯」（`id=…a`）與 B 的「帶環保杯」（`id=…b`）→ 一列，列入人日與打卡為兩邊加總。小明週一、週三各把**自己的一筆**自訂加入今日並各完成打卡，標題皆「跑步」→ 列入人日 +2、打卡 +2。若一為「夜跑」、一為「夜跑 」（多一空白）→ **兩列**（字串不完全相同）。若 Supabase 尚未套用新 RPC，前端會暫以舊欄位「區間天數×曾打卡人數」估算分母並於 UI 提示套用 migration，**避免 NaN**。
 
 ### 群組內排行榜 `[done]`
 
 - **成員排名**（四個子 tab）`[done]`：`lib/supabase/leaderboard.fetchGroupMemberLeaderboard`（以 `group_members` **全體成員**為準，無打卡者仍列入 0 分）、`useGroupMemberLeaderboard`、`LeaderboardShell`「群組內」；無群組時提示加入
 - 統計面板：群組總分數、**平均 SDG 指標（N+M，成員之和÷人數）**、期間最長 streak（**標註持有者**）、最活躍成員（完成數）`[done]`（`fetchGroupPeriodStats`）
-- 圖表：各成員完成項數橫條比較 `[done]`（`GroupMemberCountBars`）；**本群**每日完成項次（期間補 0）、**本群** SDG 行動分布（`rpc_group_sdg_distribution`，需 `20260321230100_group_sdg_distribution_rpc.sql`）
+- 圖表：**本群**每日完成項次、**本群** SDG 行動分布（`rpc_group_sdg_distribution`）**僅在子 tab「總加權」顯示**；**各成員完成項數橫條**（`GroupMemberCountBars`）仍於各子 tab 顯示 `[done]`（需 `20260321230100_group_sdg_distribution_rpc.sql`）
 - 成員打卡狀態即時更新（Realtime `user_daily_stats`）`[done]`
 
 ### 群組 vs 群組 `[done]`
@@ -476,7 +479,7 @@ lib/utils/        → 純函式工具（不依賴 Supabase 或 React；e.g. `inv
 constants/        → 全域常數、資料定義（config、scoring、sdg、checklist…）
 ```
 
-**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGlobalLeaderboardCharts.ts`、`useGroupMemberLeaderboard.ts`、`useGroupsLeaderboard.ts`、`usePersonalLeaderboard.ts`、`useGroupLeaderboardCharts.ts`、`useGroupPeriodStats.ts`、`useGroups.ts`、`useProfile.ts`、`useProfileNickname.ts`
+**`hooks/`（目前）：** `useTodayChecklist.ts`、`useGlobalLeaderboard.ts`、`useGlobalLeaderboardCharts.ts`、`useGlobalActionCompletionStats.ts`、`useGroupMemberLeaderboard.ts`、`useGroupsLeaderboard.ts`、`usePersonalLeaderboard.ts`、`useGroupLeaderboardCharts.ts`、`useGroupPeriodStats.ts`、`useGroups.ts`、`useProfile.ts`、`useProfileNickname.ts`
 
 **`lib/supabase/`（目前）：** `client.ts`、`server.ts`、`checklist.ts`（含自訂 CRUD／今日連結／佐證上傳等）、`stats.ts`、`users.ts`、`groups.ts`、`leaderboard.ts`、`leaderboardAnalytics.ts`
 
@@ -742,6 +745,10 @@ group by g.id, g.name, g.is_public;
 | `20260321231000_leaderboard_user_sdg_goals_rpc.sql` | `rpc_leaderboard_user_sdg_goals`（每位使用者期間相異 SDG，供 SDG 覆蓋維度） |
 | `20260321232000_leaderboard_user_checkin_split_rpc.sql` | `rpc_leaderboard_user_checkin_split`（公版／自訂打卡次數拆項；`lib/supabase/leaderboard.ts` 使用） |
 | `20260322120000_leaderboard_group_members_rpc.sql` | `rpc_group_member_user_ids`（呼叫者須為該群成員，回傳該群**全部** `user_id`）；`rpc_leaderboard_group_rows`（已登入：全表 `group_members` 併 `groups` 名稱／公開旗標，供各群間榜與個人快照） |
+| `20260322123000_leaderboard_action_density_rpcs.sql` | 全體「行動完成率／密度」：`rpc_leaderboard_default_template_item_stats`、`rpc_leaderboard_template_item_day_density`、`rpc_leaderboard_template_item_cell_participants`、自訂標題彙總之 `rpc_leaderboard_custom_title_*`（初版；自訂分母後續由下列檔覆寫） |
+| `20260322140000_resync_default_checklist.sql` | 僅保留系統預設範本 UUID 為 `is_default`；**upsert 10 筆**公版 `checklist_items`；停用同範本非 canonical 項目；`get_user_template_id` 優先固定預設範本 id |
+| `20260322141000_custom_title_stats_list_days.sql` | `rpc_leaderboard_custom_title_stats` 改回傳 **`on_list_days`**（列入今日清單人日）；自訂完成率分母改為列入清單人日（非「區間天數×人數」估算） |
+| `20260322142000_custom_title_stats_include_list_only.sql` | `rpc_leaderboard_custom_title_stats` 以 **full outer join** 合併打卡與列入清單；**僅列入、尚未打卡**之標題亦回傳（完成率 0%） |
 
 前端封裝：`lib/supabase/leaderboard.ts`、`leaderboardAnalytics.ts`；**期間起訖**與榜單一致之計算見 `lib/utils/leaderboardPeriod.ts`。
 
@@ -856,7 +863,7 @@ using (
 
 ## Realtime 規範
 
-所有排行榜視角均啟用 Supabase Realtime，資料有變動時前端自動更新，不需要手動重整。
+主要排行榜區塊已接 Supabase Realtime（見下表）：資料變動時會觸發 refetch，一般**不需手動重整**；各區監聽的表不盡相同（例如主列表依 `user_daily_stats`，行動完成率區另聽打卡與今日自訂連結）。
 
 ### 免費版限制
 
@@ -875,14 +882,18 @@ using (
 ```sql
 alter publication supabase_realtime add table daily_checkins;
 alter publication supabase_realtime add table user_daily_stats;
+alter publication supabase_realtime add table user_daily_custom_items;
 ```
+
+（`user_daily_custom_items` 用於「各項完成率」自訂列：加入／移出今日清單時即時重抓；若未加入 publication，該區僅在 `daily_checkins`／`user_daily_stats` 變動時更新。）
 
 ### 各排行榜視角監聽對象
 
 | 視角         | 監聽的表                             | 說明                       |
 | ------------ | ------------------------------------ | -------------------------- |
-| 全體排行榜   | `user_daily_stats`                   | 任何人打卡更新分數即觸發   |
-| 群組內排行榜 | `user_daily_stats`、`daily_checkins` | 成員分數與打卡狀態即時更新 |
+| 全體排行榜   | `user_daily_stats`                   | 主列表與完成項次／SDG 圖表：分數與彙總變動即觸發 |
+| 全體 · 行動完成率區 | `daily_checkins`、`user_daily_custom_items`、`user_daily_stats` | `useGlobalActionCompletionStats`：公版／自訂完成率與密度名單與資料一致 |
+| 群組內排行榜 | `user_daily_stats`                   | 成員分數變動即觸發（實作與上表對齊；`daily_checkins` 可另增以縮短觸發路徑） |
 | 群組 vs 群組 | `user_daily_stats`                   | 群組平均分即時更新         |
 | 個人記錄     | 不需要 Realtime                      | 自己的操作本地更新即可     |
 
@@ -1089,7 +1100,7 @@ Tailwind 預設斷點，統一使用，不自訂：
 | ----------- | -------------------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
 | 主導航      | 底部 tab bar                                                                     | 底部 tab bar     | 左側 sidebar                             |
 | 檢核表      | 單欄列表；清單下**單卡**「自訂行動與常用收藏」（表單與收藏上下分區、`embedded`） | 單欄列表（較寬） | 單欄為主（統計在上）；雙欄為目標 `[tbd]` |
-| 排行榜      | 全寬列表                                                                         | 全寬列表         | **全體**：統計卡＋圖表區 **lg: 雙欄**；**各群間**：四格統計卡（xl 四欄）＋列表，無橫條圖 `[done]` |
+| 排行榜      | 全寬列表                                                                         | 全寬列表         | **全體**：統計卡四格＋列表；**總加權**時再加圖表區（完成項次／SDG／行動密度，**lg: 雙欄**）；**各群間**：四格統計卡（xl 四欄）＋列表，無橫條圖 `[done]` |
 | 統計圖表    | 全寬                                                                             | 全寬             | 並排顯示（與上欄對齊）`[done]`             |
 
 ### 觸控規範（手機 / 平板）
@@ -1273,6 +1284,28 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 ---
 
+### [2026-03-22] v0.10.40 — 行動完成率 Realtime、自訂列含「僅列入」
+
+- `[FEAT]` **`useGlobalActionCompletionStats`**：`GlobalActionCompletionSection` 資料改由此 hook 載入；登入時訂閱 **`daily_checkins`、`user_daily_custom_items`、`user_daily_stats`** 並 silent refetch
+- `[DB]` **`20260322142000_custom_title_stats_include_list_only.sql`**：`rpc_leaderboard_custom_title_stats` **full outer join** 列入清單與打卡；期間內曾列入今日、尚無打卡之標題亦出列（**0%**）
+- `[DOCS]` Realtime：建議將 **`user_daily_custom_items`** 加入 publication；監聽對象表與全體排行榜 bullet 補充「非所有區塊監聽同一張表」之說明
+
+### [2026-03-22] v0.10.39 — 自訂完成率分母、公版 resync、NaN 相容
+
+- `[DB]` **`20260322141000_custom_title_stats_list_days.sql`**：`rpc_leaderboard_custom_title_stats` 回傳 **`on_list_days`**；自訂（依標題）完成率分母＝**列入今日清單人日**（`user_daily_custom_items`）
+- `[DB]` **`20260322140000_resync_default_checklist.sql`**：系統預設公版 **10 筆**與單一 `is_default` 範本；停用同範本多餘項目；`get_user_template_id` 優先固定預設範本 UUID
+- `[FIX]` **`lib/supabase/leaderboardActionHeatmap`**：自訂統計列 **向下相容舊 RPC**（無 `on_list_days` 時以 `period_days×active_users` 填分母並設 `legacyListDenominator`）；**`safeNonNeg`** 避免 **NaN／undefined** 顯示
+- `[FEAT]` **`GlobalActionCompletionSection`**：舊分母時副標提示套用 `20260322141000` migration
+- `[DOCS]` 排行榜「行動完成率」小節：公式、**依標題彙總**範例（不同 `custom_item_id`、相同 title 併列）、RPC 表補 **22140000／22141000**
+
+### [2026-03-22] v0.10.38 — 總加權專屬圖表區、行動密度、SDG 卡拆解
+
+- `[FEAT]` 全體統計卡：SDG 覆蓋最高副標改 **`N=…（相異）+ M=…（單日最多）＝合計`**；熱門行動改 **`rpc_global_hot_actions` 僅取第 1 名**（`topHotAction`）
+- `[FEAT]` **完成項次／SDG 分布／行動完成率＋密度圖**僅在 **「總加權」**子 Tab 顯示；`fetchGlobalLeaderboardCharts`／`fetchGroupLeaderboardCharts` 支援 **`includeWeightedCharts`**
+- `[FEAT]` 移除熱門行動 Top 5 表；改 **`GlobalActionCompletionSection`**（公版＋自訂標題、展開 GitHub／月曆／週視圖密度、點格彈窗＋佐證圖／照片牆）；**`lib/utils/heatmapLayout.ts`** 共用版面
+- `[DB]` **`20260322123000_leaderboard_action_density_rpcs.sql`**（與 `20260322120000_leaderboard_group_members_rpc.sql` 檔名區隔）
+- `[DOCS]` 全體／群組內排行榜小節、RPC 表、Layout 表、Changelog
+
 ### [2026-03-22] v0.10.37 — 各群間四卡、移除橫條圖、SDG 依期間標示
 
 - `[FEAT]` **各群間**統計列改 **四卡**（參與群組數、平均原始分、**依選定時間**之 SDG 覆蓋最高、平均 Streak Tier 加成最高）；卡標題／說明標註 **`periodScopeLabel`**
@@ -1338,7 +1371,7 @@ style(ui): 調整 CheckItem 勾選動畫曲線
 
 - `[DB]` migration `20260321220000`：`rpc_global_sdg_distribution`、`rpc_global_hot_actions`、`rpc_my_sdg_distribution`（SECURITY DEFINER）
 - `[FEAT]` `lib/supabase/leaderboardAnalytics`、`leaderboardPeriod`；`fetchGroupPeriodStats`；`fetchUserDailyStatsInRange`；`LeaderboardViz`；`ProfileChartsSection`；`useGlobalLeaderboardCharts`、`useGroupPeriodStats`
-- `[FEAT]` 全體：統計四格、每日完成柱狀、SDG 分布、熱門行動；群組內／各群間補齊統計與橫條圖
+- `[FEAT]` 全體：統計四格、每日完成柱狀、SDG 分布、熱門行動（後續 v0.10.38 改總加權專屬圖表區與行動密度）；群組內／各群間補齊統計與橫條圖
 - `[DOCS]` 「排行榜設計」、UI/UX Layout、`lib/supabase` 說明與本 Changelog
 
 ### [2026-03-21] v0.10.26 — 排行榜四視角（全體／群組內／各群間／個人）

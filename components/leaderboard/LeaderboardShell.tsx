@@ -5,10 +5,10 @@ import {
   periodScopeLabel,
 } from "@/components/leaderboard/LeaderboardPeriodBar";
 import { RankMark } from "@/components/leaderboard/RankMark";
+import { GlobalActionCompletionSection } from "@/components/leaderboard/GlobalActionCompletionSection";
 import {
   GlobalDailyCompletionBars,
   GroupMemberCountBars,
-  HotActionsList,
   SdgDistributionBars,
 } from "@/components/leaderboard/LeaderboardViz";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -35,7 +35,14 @@ import {
   type LeaderboardPeriod,
   type RankedRow,
 } from "@/lib/utils/leaderboard";
-import { ChevronLeft, ChevronRight, Flame, LayoutGrid, Trophy, Users } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  LayoutGrid,
+  Trophy,
+  Users,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const USER_DIMS: { id: LeaderboardDimension; label: string }[] = [
@@ -85,7 +92,9 @@ function leaderboardUserDimensionHint(dimension: LeaderboardDimension): string {
 }
 
 /** 各群組之間：同構線性積分，對象改為「群組」 */
-function leaderboardGroupsDimensionHint(dimension: LeaderboardDimension): string {
+function leaderboardGroupsDimensionHint(
+  dimension: LeaderboardDimension,
+): string {
   if (dimension === "weighted") {
     return [
       "總加權：在「平均分數、平均 Streak Tier 加成、SDG 覆蓋」三個維度各排一次群組名次。",
@@ -174,8 +183,8 @@ function LeaderboardSdgTags({
         );
       })}
       <span className="text-[10px] leading-snug text-[var(--color-subtle)]">
-        N={ids.length}（相異）+ M={maxLabel}（單日最多）＝{ids.length + maxLabel}{" "}
-        （排名用）
+        N={ids.length}（相異）+ M={maxLabel}（單日最多）＝
+        {ids.length + maxLabel} （排名用）
       </span>
     </div>
   );
@@ -209,18 +218,14 @@ function dailyCompletionTitle(
   mode: GlobalLeaderboardChartsData["dailyChartMode"] | undefined,
   scopeLabel: string,
 ): string {
-  if (mode === "week_daily")
-    return `完成項次（${scopeLabel}·本週每日）`;
+  if (mode === "week_daily") return `完成項次（${scopeLabel}·本週每日）`;
   if (mode === "month_four_segments")
     return `完成項次（${scopeLabel}·本月四週）`;
-  if (mode === "all_daily")
-    return `完成項次（${scopeLabel}·至今·每日）`;
+  if (mode === "all_daily") return `完成項次（${scopeLabel}·至今·每日）`;
   if (mode === "all_four_segments")
     return `完成項次（${scopeLabel}·至今·四週）`;
-  if (mode === "all_monthly")
-    return `完成項次（${scopeLabel}·至今·按月）`;
-  if (mode === "all_yearly")
-    return `完成項次（${scopeLabel}·至今·按年）`;
+  if (mode === "all_monthly") return `完成項次（${scopeLabel}·至今·按月）`;
+  if (mode === "all_yearly") return `完成項次（${scopeLabel}·至今·按年）`;
   return `完成項次（${scopeLabel}）`;
 }
 
@@ -235,10 +240,8 @@ function dailyCompletionSubtitle(
     return "至今未滿一週：補齊該曆週 7 日逐日顯示；滿一週至 7 日內亦逐日；0 為淺灰底。";
   if (mode === "all_four_segments")
     return "至今區間 8～31 天：依日數均分四週加總。";
-  if (mode === "all_monthly")
-    return "至今區間 32 天～一年：依曆月加總。";
-  if (mode === "all_yearly")
-    return "至今超過一年：依曆年加總。";
+  if (mode === "all_monthly") return "至今區間 32 天～一年：依曆月加總。";
+  if (mode === "all_yearly") return "至今超過一年：依曆年加總。";
   return "";
 }
 
@@ -400,7 +403,7 @@ function UserRowBar({
 }) {
   const raw =
     dimension === "weighted"
-      ? row.weightedPoints ?? 0
+      ? (row.weightedPoints ?? 0)
       : dimension === "score"
         ? row.totalRawScore
         : dimension === "count"
@@ -408,13 +411,13 @@ function UserRowBar({
           : sdgRankSum(row);
   const pct = maxVal > 0 ? Math.min(100, Math.round((raw / maxVal) * 100)) : 0;
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[min(100%,14rem)]">
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-xs tabular-nums text-[var(--color-ink-secondary)]">
+    <div className="flex w-full min-w-0 shrink-0 flex-col items-stretch gap-1.5 sm:ml-auto sm:w-[min(14rem,calc(100%-0.5rem))]">
+      <div className="flex w-full justify-end">
+        <span className="text-right text-xs tabular-nums text-[var(--color-ink-secondary)]">
           {formatUserMetric(dimension, row)}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[var(--color-white)]/80">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-white)]/80">
         <div
           className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary-strong)] to-[var(--color-primary)] transition-[width]"
           style={{ width: `${pct}%` }}
@@ -435,7 +438,7 @@ function GroupRowBar({
 }) {
   const raw =
     dimension === "weighted"
-      ? row.weightedPoints ?? 0
+      ? (row.weightedPoints ?? 0)
       : dimension === "score"
         ? row.avgRawScorePerMember
         : dimension === "count"
@@ -443,13 +446,13 @@ function GroupRowBar({
           : row.avgSdgRankPerMember;
   const pct = maxVal > 0 ? Math.min(100, Math.round((raw / maxVal) * 100)) : 0;
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[min(100%,14rem)]">
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-xs tabular-nums text-[var(--color-ink-secondary)]">
+    <div className="flex w-full min-w-0 shrink-0 flex-col items-stretch gap-1.5 sm:ml-auto sm:w-[min(14rem,calc(100%-0.5rem))]">
+      <div className="flex w-full justify-end">
+        <span className="text-right text-xs tabular-nums text-[var(--color-ink-secondary)]">
           {formatGroupMetric(dimension, row)}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[var(--color-white)]/80">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-white)]/80">
         <div
           className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary-dark)] to-[var(--color-primary-strong)]"
           style={{ width: `${pct}%` }}
@@ -476,71 +479,71 @@ function PersonalLeaderboardBody({
     <>
       <div className="-mx-1 min-w-0 w-full overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch] lg:mx-0">
         <div className="flex w-max min-w-full gap-4 lg:grid lg:w-full lg:min-w-0 lg:grid-cols-3 lg:gap-4">
-        <div className="w-[min(22rem,calc(100vw-2.5rem))] shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-gradient-to-br from-[var(--color-primary-light)]/70 to-[var(--color-surface)] p-5 shadow-sm lg:w-full lg:min-w-0 lg:max-w-none">
-          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-            我的全體排名（總加權）
-          </p>
-          <p className="mt-2 text-4xl font-bold tabular-nums text-[var(--color-primary-dark)]">
-            {p.globalRanks.weighted != null
-              ? `第 ${p.globalRanks.weighted} 名`
-              : "未上榜"}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-subtle)]">
-            共 {p.totalParticipants} 人曾於「{pl}」區間內打卡
-          </p>
-        </div>
-        <div className="w-[min(22rem,calc(100vw-2.5rem))] shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-5 shadow-sm lg:w-full lg:min-w-0 lg:max-w-none">
-          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-            群組內排名（總加權）
-          </p>
-          {p.group ? (
-            <>
-              <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">
-                {p.group.name}
-              </p>
-              <p className="mt-2 text-4xl font-bold tabular-nums text-[var(--color-primary-dark)]">
-                {p.groupRanks?.weighted != null
-                  ? `第 ${p.groupRanks.weighted} 名`
-                  : "未上榜"}
-              </p>
-              {p.groupMemberCount != null && p.groupMemberCount > 0 ? (
-                <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                  群組共 {p.groupMemberCount} 人
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">
-              尚未加入群組
+          <div className="w-[min(22rem,calc(100vw-2.5rem))] shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-gradient-to-br from-[var(--color-primary-light)]/70 to-[var(--color-surface)] p-5 shadow-sm lg:w-full lg:min-w-0 lg:max-w-none">
+            <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+              我的全體排名（總加權）
             </p>
-          )}
-        </div>
-        <div className="w-[min(22rem,calc(100vw-2.5rem))] shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-5 shadow-sm lg:w-full lg:min-w-0 lg:max-w-none">
-          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-            各群間排名（總加權）
-          </p>
-          {p.group && p.groupsRanks ? (
-            <>
-              <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">
-                {p.group.name}
-              </p>
-              <p className="mt-2 text-4xl font-bold tabular-nums text-[var(--color-primary-dark)]">
-                {p.groupsRanks.weighted != null
-                  ? `第 ${p.groupsRanks.weighted} 名`
-                  : "未上榜"}
-              </p>
-              {p.totalGroups > 0 ? (
-                <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                  共 {p.totalGroups} 個群組
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">
-              尚未加入群組
+            <p className="mt-2 text-4xl font-bold tabular-nums text-[var(--color-primary-dark)]">
+              {p.globalRanks.weighted != null
+                ? `第 ${p.globalRanks.weighted} 名`
+                : "未上榜"}
             </p>
-          )}
-        </div>
+            <p className="mt-1 text-xs text-[var(--color-subtle)]">
+              共 {p.totalParticipants} 人曾於「{pl}」區間內打卡
+            </p>
+          </div>
+          <div className="w-[min(22rem,calc(100vw-2.5rem))] shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-5 shadow-sm lg:w-full lg:min-w-0 lg:max-w-none">
+            <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+              群組內排名（總加權）
+            </p>
+            {p.group ? (
+              <>
+                <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">
+                  {p.group.name}
+                </p>
+                <p className="mt-2 text-4xl font-bold tabular-nums text-[var(--color-primary-dark)]">
+                  {p.groupRanks?.weighted != null
+                    ? `第 ${p.groupRanks.weighted} 名`
+                    : "未上榜"}
+                </p>
+                {p.groupMemberCount != null && p.groupMemberCount > 0 ? (
+                  <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                    群組共 {p.groupMemberCount} 人
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">
+                尚未加入群組
+              </p>
+            )}
+          </div>
+          <div className="w-[min(22rem,calc(100vw-2.5rem))] shrink-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-5 shadow-sm lg:w-full lg:min-w-0 lg:max-w-none">
+            <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
+              各群間排名（總加權）
+            </p>
+            {p.group && p.groupsRanks ? (
+              <>
+                <p className="mt-1 text-sm font-medium text-[var(--color-ink)]">
+                  {p.group.name}
+                </p>
+                <p className="mt-2 text-4xl font-bold tabular-nums text-[var(--color-primary-dark)]">
+                  {p.groupsRanks.weighted != null
+                    ? `第 ${p.groupsRanks.weighted} 名`
+                    : "未上榜"}
+                </p>
+                {p.totalGroups > 0 ? (
+                  <p className="mt-1 text-xs text-[var(--color-subtle)]">
+                    共 {p.totalGroups} 個群組
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-[var(--color-ink-secondary)]">
+                尚未加入群組
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -594,8 +597,7 @@ export function LeaderboardShell() {
     "global" | "group" | "groups" | "personal"
   >("global");
   const [period, setPeriod] = useState<LeaderboardPeriod>("week");
-  const [dimension, setDimension] =
-    useState<LeaderboardDimension>("weighted");
+  const [dimension, setDimension] = useState<LeaderboardDimension>("weighted");
   const [listPage, setListPage] = useState(1);
 
   useEffect(() => {
@@ -624,11 +626,16 @@ export function LeaderboardShell() {
   const groupsLb = useGroupsLeaderboard(period, dimension, listPage);
   const personalLb = usePersonalLeaderboard(period);
 
-  const globalCharts = useGlobalLeaderboardCharts(period, scope === "global");
+  const globalCharts = useGlobalLeaderboardCharts(
+    period,
+    scope === "global",
+    scope === "global" && dimension === "weighted",
+  );
   const groupCharts = useGroupLeaderboardCharts(
     period,
     scope === "group" && Boolean(myGroupId),
     myGroupId,
+    dimension === "weighted",
   );
   const groupPeriodStats = useGroupPeriodStats(
     myGroupId,
@@ -725,7 +732,9 @@ export function LeaderboardShell() {
                 「{periodScopeLabel(period)}」參與人數
               </p>
               <p className="mt-1 text-3xl font-bold tabular-nums text-[var(--color-primary-dark)]">
-                {globalLb.loading ? "—" : globalLb.data?.totalParticipants ?? 0}
+                {globalLb.loading
+                  ? "—"
+                  : (globalLb.data?.totalParticipants ?? 0)}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
                 曾於「{periodScopeLabel(period)}」區間內有打卡紀錄的使用者
@@ -733,28 +742,36 @@ export function LeaderboardShell() {
             </div>
             <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
               <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-                「{periodScopeLabel(period)}」完成項次加總
+                「{periodScopeLabel(period)}」分數最高
               </p>
-              <p className="mt-1 text-3xl font-bold tabular-nums text-[var(--color-primary-dark)]">
+              <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
                 {globalCharts.loading
                   ? "—"
-                  : globalCharts.data?.totalCompletions ?? "—"}
+                  : (globalCharts.data?.topByScore?.nickname ?? "—")}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                「{periodScopeLabel(period)}」區間內所有打卡完成數加總
+                {globalCharts.data?.topByScore
+                  ? `期間原始分加總 ${globalCharts.data.topByScore.totalRawScore} 分`
+                  : globalCharts.loading
+                    ? "載入中…"
+                    : "尚無打卡資料"}
               </p>
             </div>
             <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
               <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-                「{periodScopeLabel(period)}」曾達 9+ SDG 覆蓋人數
+                「{periodScopeLabel(period)}」SDG 覆蓋最高
               </p>
-              <p className="mt-1 text-3xl font-bold tabular-nums text-[var(--color-primary-dark)]">
+              <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
                 {globalCharts.loading
                   ? "—"
-                  : (globalCharts.data?.usersWithFullSdgCoverage ?? "—")}
+                  : (globalCharts.data?.topBySdg?.nickname ?? "—")}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                「{periodScopeLabel(period)}」內單日覆蓋數曾 ≥9 的使用者
+                {globalCharts.data?.topBySdg
+                  ? `N=${globalCharts.data.topBySdg.sdgUnionCount}（相異）+ M=${globalCharts.data.topBySdg.maxSdgCoverage}（單日最多）＝${globalCharts.data.topBySdg.sdgMetric}`
+                  : globalCharts.loading
+                    ? "載入中…"
+                    : "尚無打卡資料"}
               </p>
             </div>
             <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/80 bg-[var(--color-surface)] p-4">
@@ -764,71 +781,21 @@ export function LeaderboardShell() {
               <p className="mt-1 line-clamp-2 text-lg font-semibold text-[var(--color-ink)]">
                 {globalCharts.loading
                   ? "—"
-                  : globalCharts.data?.hotActions[0]?.label ?? "—"}
+                  : (globalCharts.data?.topHotAction?.label ?? "—")}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
-                {globalCharts.data?.hotActions[0]
-                  ? `${globalCharts.data.hotActions[0].count} 次完成`
+                {globalCharts.data?.topHotAction
+                  ? `${globalCharts.data.topHotAction.count} 次完成`
                   : "依打卡次數"}
               </p>
             </div>
           </div>
 
-          {globalCharts.error ? (
+          {dimension === "weighted" && globalCharts.error ? (
             <p className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
-              圖表資料載入失敗：{globalCharts.error.message}（請確認已套用 migration
-              `20260321220000_leaderboard_analytics_rpc.sql` 等）
+              圖表資料載入失敗：{globalCharts.error.message}（請確認已套用
+              migration `20260321220000_leaderboard_analytics_rpc.sql` 等）
             </p>
-          ) : null}
-
-          {!globalCharts.loading && globalCharts.data ? (
-            <div
-              key={`global-charts-${period}`}
-              className="grid gap-4 lg:grid-cols-2"
-            >
-              <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
-                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                  {dailyCompletionTitle(
-                    globalCharts.data.dailyChartMode,
-                    "全體",
-                  )}
-                </h3>
-                <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-                  {dailyCompletionSubtitle(globalCharts.data.dailyChartMode)}
-                </p>
-                <div className="mt-6 flex min-h-[200px] flex-col justify-end overflow-x-auto overflow-y-visible pb-2 pt-2">
-                  <GlobalDailyCompletionBars
-                    points={globalCharts.data.dailyCompletions}
-                  />
-                </div>
-              </div>
-              <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
-                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                  SDG 行動分布
-                </h3>
-                <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-                  依打卡列對 SDG 標籤計次；長條寬度為佔總次數之比例（%）
-                </p>
-                <div className="mt-4 max-h-64 overflow-y-auto pr-1">
-                  <SdgDistributionBars
-                    rows={globalCharts.data.sdgDistribution}
-                  />
-                </div>
-              </div>
-              <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm lg:col-span-2">
-                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                  熱門行動 Top 5
-                </h3>
-                <div className="mt-3">
-                  <HotActionsList items={globalCharts.data.hotActions} />
-                </div>
-              </div>
-            </div>
-          ) : globalCharts.loading ? (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Skeleton className="h-56 rounded-2xl" />
-              <Skeleton className="h-56 rounded-2xl" />
-            </div>
           ) : null}
 
           {globalLb.loading ? (
@@ -847,14 +814,16 @@ export function LeaderboardShell() {
               還沒有人上榜，成為第一個完成行動的人吧！
             </p>
           ) : null}
-          {!globalLb.loading && globalLb.data && globalLb.data.rows.length > 0 ? (
+          {!globalLb.loading &&
+          globalLb.data &&
+          globalLb.data.rows.length > 0 ? (
             <ol className="space-y-3">
               {globalLb.data.rows.map((row) => (
                 <li
                   key={row.userId}
-                  className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center"
+                  className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     <RankMark rank={row.rank} />
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
                       {avatarLetter(row.nickname)}
@@ -878,7 +847,9 @@ export function LeaderboardShell() {
               ))}
             </ol>
           ) : null}
-          {!globalLb.loading && globalLb.data && globalLb.data.rows.length > 0 ? (
+          {!globalLb.loading &&
+          globalLb.data &&
+          globalLb.data.rows.length > 0 ? (
             <LeaderboardPaginationBar
               page={globalLb.data.page}
               totalPages={globalLb.data.totalPages}
@@ -886,6 +857,54 @@ export function LeaderboardShell() {
               pageSize={globalLb.data.pageSize}
               onPageChange={setListPage}
             />
+          ) : null}
+
+          {dimension === "weighted" && !globalCharts.loading && globalCharts.data ? (
+            <div
+              key={`global-charts-${period}`}
+              className="grid min-w-0 gap-4 lg:grid-cols-2"
+            >
+              <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+                  {dailyCompletionTitle(
+                    globalCharts.data.dailyChartMode,
+                    "全體",
+                  )}
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
+                  {dailyCompletionSubtitle(globalCharts.data.dailyChartMode)}
+                </p>
+                <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
+                  <div className="flex min-h-[160px] w-full min-w-0 flex-col justify-end">
+                    <GlobalDailyCompletionBars
+                      points={globalCharts.data.dailyCompletions}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+                <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+                  SDG 行動分布
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
+                  依打卡列對 SDG 標籤計次；長條寬度為佔總次數之比例（%）
+                </p>
+                <div className="mt-4 max-h-64 overflow-y-auto pr-1">
+                  <SdgDistributionBars
+                    rows={globalCharts.data.sdgDistribution}
+                  />
+                </div>
+              </div>
+              <div className="min-w-0 lg:col-span-2">
+                <GlobalActionCompletionSection period={period} />
+              </div>
+            </div>
+          ) : dimension === "weighted" && globalCharts.loading ? (
+            <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+              <Skeleton className="h-56 rounded-2xl" />
+              <Skeleton className="h-56 rounded-2xl" />
+              <Skeleton className="h-48 rounded-2xl lg:col-span-2" />
+            </div>
           ) : null}
         </section>
       ) : null}
@@ -970,19 +989,19 @@ export function LeaderboardShell() {
                 </div>
               ) : null}
 
-              {groupCharts.error ? (
+              {dimension === "weighted" && groupCharts.error ? (
                 <p className="rounded-2xl border border-amber-200/80 bg-amber-50/90 p-3 text-sm text-amber-950">
                   群組圖表載入失敗：{groupCharts.error.message}（請確認已套用
                   `20260321230100_group_sdg_distribution_rpc.sql`）
                 </p>
               ) : null}
 
-              {!groupCharts.loading && groupCharts.data ? (
+              {dimension === "weighted" && !groupCharts.loading && groupCharts.data ? (
                 <div
                   key={`group-charts-${period}`}
-                  className="grid gap-4 lg:grid-cols-2"
+                  className="grid min-w-0 gap-4 lg:grid-cols-2"
                 >
-                  <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
                     <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                       {dailyCompletionTitle(
                         groupCharts.data.dailyChartMode,
@@ -992,19 +1011,21 @@ export function LeaderboardShell() {
                     <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
                       {dailyCompletionSubtitle(groupCharts.data.dailyChartMode)}
                     </p>
-                    <div className="mt-6 flex min-h-[200px] flex-col justify-end overflow-x-auto overflow-y-visible pb-2 pt-2">
-                      <GlobalDailyCompletionBars
-                        points={groupCharts.data.dailyCompletions}
-                      />
+                    <div className="mt-6 w-full min-w-0 overflow-x-auto overflow-y-visible pb-2 pt-2 [-webkit-overflow-scrolling:touch] touch-pan-x">
+                      <div className="flex min-h-[160px] w-full min-w-0 flex-col justify-end">
+                        <GlobalDailyCompletionBars
+                          points={groupCharts.data.dailyCompletions}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
+                  <div className="min-w-0 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm">
                     <h3 className="text-sm font-semibold text-[var(--color-ink)]">
                       SDG 行動分布（本群）
                     </h3>
                     <p className="mt-0.5 text-xs text-[var(--color-subtle)]">
-                      本群成員打卡之 SDG 計次；長條為佔總次數比例（%），配色同 SDG
-                      標籤
+                      本群成員打卡之 SDG 計次；長條為佔總次數比例（%），配色同
+                      SDG 標籤
                     </p>
                     <div className="mt-4 max-h-64 overflow-y-auto pr-1">
                       <SdgDistributionBars
@@ -1013,8 +1034,8 @@ export function LeaderboardShell() {
                     </div>
                   </div>
                 </div>
-              ) : groupCharts.loading ? (
-                <div className="grid gap-4 lg:grid-cols-2">
+              ) : dimension === "weighted" && groupCharts.loading ? (
+                <div className="grid min-w-0 gap-4 lg:grid-cols-2">
                   <Skeleton className="h-56 rounded-2xl" />
                   <Skeleton className="h-56 rounded-2xl" />
                 </div>
@@ -1060,9 +1081,9 @@ export function LeaderboardShell() {
                     {groupLb.data.rows.map((row) => (
                       <li
                         key={row.userId}
-                        className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center"
+                        className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                       >
-                        <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           <RankMark rank={row.rank} />
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-base font-semibold text-[var(--color-primary-dark)]">
                             {avatarLetter(row.nickname)}
@@ -1108,7 +1129,7 @@ export function LeaderboardShell() {
                 參與排行群組數
               </p>
               <p className="mt-1 text-3xl font-bold tabular-nums text-[var(--color-primary-dark)]">
-                {groupsLb.loading ? "—" : groupsLb.data?.totalGroups ?? 0}
+                {groupsLb.loading ? "—" : (groupsLb.data?.totalGroups ?? 0)}
               </p>
               <p className="mt-1 text-xs text-[var(--color-subtle)]">
                 與上方「{periodScopeLabel(period)}」一致
@@ -1174,7 +1195,7 @@ export function LeaderboardShell() {
               {groupsLb.data.rows.map((row) => (
                 <li
                   key={row.groupId}
-                  className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center"
+                  className="flex flex-col gap-3 rounded-2xl border-[0.5px] border-[var(--color-muted)]/90 bg-[var(--color-surface)] p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <RankMark rank={row.rank} />

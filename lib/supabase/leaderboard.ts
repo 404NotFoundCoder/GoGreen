@@ -327,11 +327,15 @@ function buildMembersByGroupAndGroupRows(rows: LeaderboardGroupRow[]): {
   return { membersByGroup, groupsRows };
 }
 
-export async function fetchGlobalLeaderboard(
+/**
+ * 全體榜用：同期間 `user_daily_stats` 列與使用者聚合（供榜單、圖表高光共用，避免重複打同一批 RPC）。
+ */
+export async function fetchLeaderboardStatsAndUserAggregates(
   period: LeaderboardPeriod,
-  dimension: LeaderboardDimension,
-  page: number = 1,
-): Promise<GlobalLeaderboardResult> {
+): Promise<{
+  stats: LeaderboardDailyStatRow[];
+  users: UserPeriodAgg[];
+}> {
   const [stats, nick, sdgMap, splitMap] = await Promise.all([
     fetchLeaderboardDailyStatsForPeriod(period),
     fetchNicknameMap(),
@@ -341,6 +345,15 @@ export async function fetchGlobalLeaderboard(
   const list = aggregateUserList(stats, nick);
   applyCoveredSdgIds(list, sdgMap);
   applyCheckinSplit(list, splitMap);
+  return { stats, users: list };
+}
+
+export async function fetchGlobalLeaderboard(
+  period: LeaderboardPeriod,
+  dimension: LeaderboardDimension,
+  page: number = 1,
+): Promise<GlobalLeaderboardResult> {
+  const { users: list } = await fetchLeaderboardStatsAndUserAggregates(period);
   const weighted = computeWeightedRanks(list);
   const totalParticipants = list.length;
   const pageSize = LEADERBOARD_LIMIT;

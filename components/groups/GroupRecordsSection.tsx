@@ -546,12 +546,12 @@ export function GroupRecordsSection({ groupId }: { groupId: string }) {
         <button
           type="button"
           onClick={() => setExpanded(open ? null : rowKey)}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left sm:gap-3"
+          className="flex w-full items-start gap-2 px-3 py-2.5 text-left sm:gap-3"
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-pale)] text-xs font-bold text-[var(--color-primary-dark)]">
             {rank}
           </span>
-          <span className="min-w-0 flex-1 truncate font-medium text-[var(--color-ink)]">
+          <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-snug text-[var(--color-ink)]">
             {title}
           </span>
           <div className="hidden w-28 shrink-0 sm:block">

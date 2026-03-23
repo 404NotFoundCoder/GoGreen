@@ -48,6 +48,15 @@ body {
   font-family: var(--font-noto-tc), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* iOS Safari: 避免聚焦 input/textarea/select 自動縮放 */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* 成功打勾：元件 SuccessCheckmark */
 @keyframes gg-success-ring {
   from {

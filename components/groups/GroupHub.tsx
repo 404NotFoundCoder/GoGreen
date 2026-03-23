@@ -584,61 +584,63 @@ export function GroupHub() {
                   key={row.group_id}
                   className="flex flex-col gap-2 rounded-2xl border-[0.5px] border-[var(--color-muted)] bg-[var(--color-surface)] px-4 py-3"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-[var(--color-ink)]">
-                        {g.name}
-                      </p>
-                      <p className="text-xs text-[var(--color-ink-secondary)]">
-                        {isCreator ? "建立者 · " : null}
-                        {g.is_public ? "公開" : "私人"}
-                      </p>
-                      {g.is_public ? (
-                        <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-                          公開群組沒有邀請碼；請告知對方群組名稱，對方可在本頁下方「公開群組」清單加入。
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-[var(--color-ink)]">
+                          {g.name}
                         </p>
-                      ) : g.invite_code ? (
-                        <InviteCodePanel code={g.invite_code} />
-                      ) : null}
-                      {userId ? (
-                        <GroupMemberBlock
-                          groupId={g.id}
-                          isOwner={isCreator}
-                          viewerUserId={userId}
-                          onRemoveMember={removeMember}
-                        />
-                      ) : null}
+                        <p className="text-xs text-[var(--color-ink-secondary)]">
+                          {isCreator ? "建立者 · " : null}
+                          {g.is_public ? "公開" : "私人"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 justify-end gap-2">
+                        {isCreator ? (
+                          <button
+                            type="button"
+                            className="min-h-[44px] rounded-full border-[0.5px] border-[#b45309]/40 bg-[#fff7ed] px-4 text-sm font-medium text-[#9a3412] hover:bg-[#ffedd5]"
+                            onClick={() =>
+                              setDeleteTarget({ id: g.id, name: g.name })
+                            }
+                          >
+                            刪除群組
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={pending === `leave:${g.id}`}
+                            className="min-h-[44px] rounded-full px-3 text-sm text-red-800 disabled:opacity-50"
+                            onClick={() => {
+                              setPending(`leave:${g.id}`);
+                              void leave(g.id)
+                                .then(() => toast.show("已退出群組"))
+                                .catch((e) =>
+                                  toast.show(translateGroupRpcError(e)),
+                                )
+                                .finally(() => setPending(null));
+                            }}
+                          >
+                            {pending === `leave:${g.id}` ? "退出中…" : "退出"}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex shrink-0 flex-wrap justify-end gap-2 self-start">
-                      {isCreator ? (
-                        <button
-                          type="button"
-                          className="min-h-[44px] rounded-full border-[0.5px] border-[#b45309]/40 bg-[#fff7ed] px-4 text-sm font-medium text-[#9a3412] hover:bg-[#ffedd5]"
-                          onClick={() =>
-                            setDeleteTarget({ id: g.id, name: g.name })
-                          }
-                        >
-                          刪除群組
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={pending === `leave:${g.id}`}
-                          className="min-h-[44px] rounded-full px-3 text-sm text-red-800 disabled:opacity-50"
-                          onClick={() => {
-                            setPending(`leave:${g.id}`);
-                            void leave(g.id)
-                              .then(() => toast.show("已退出群組"))
-                              .catch((e) =>
-                                toast.show(translateGroupRpcError(e)),
-                              )
-                              .finally(() => setPending(null));
-                          }}
-                        >
-                          {pending === `leave:${g.id}` ? "退出中…" : "退出"}
-                        </button>
-                      )}
-                    </div>
+                    {g.is_public ? (
+                      <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+                        公開群組沒有邀請碼；請告知對方群組名稱，對方可在本頁下方「公開群組」清單加入。
+                      </p>
+                    ) : g.invite_code ? (
+                      <InviteCodePanel code={g.invite_code} />
+                    ) : null}
+                    {userId ? (
+                      <GroupMemberBlock
+                        groupId={g.id}
+                        isOwner={isCreator}
+                        viewerUserId={userId}
+                        onRemoveMember={removeMember}
+                      />
+                    ) : null}
                   </div>
                 </li>
               );
